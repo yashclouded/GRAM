@@ -52,6 +52,7 @@ func NewServer(orch *orchestrator.Orchestrator) *Server {
 		r.Post("/market/demand", s.createDemand)
 		r.Post("/market/offer", s.createOffer)
 		r.Post("/market/run", s.runMarketCycle)
+		r.Post("/market/settle", s.settleDelivery)
 		
 		r.Post("/chaos/kill", s.killNodes)
 		r.Post("/chaos/recover", s.recoverNodes)

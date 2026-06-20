@@ -128,6 +128,25 @@ func (s *Server) runMarketCycle(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]string{"status": "market cycle started (reactive)"})
 }
 
+func (s *Server) settleDelivery(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		TradeID            string `json:"trade_id"`
+		FarmerID           string `json:"farmer_id"`
+		BuyerID            string `json:"buyer_id"`
+		TransporterID      string `json:"transporter_id"`
+		AIGrade            string `json:"ai_grade"`
+		BuyerReportedGrade string `json:"buyer_reported_grade"`
+		Success            bool   `json:"success"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid payload"})
+		return
+	}
+
+	s.Orch.SimulateSettlement(req.TradeID, req.FarmerID, req.BuyerID, req.TransporterID, req.Success, req.AIGrade, req.BuyerReportedGrade)
+	respondJSON(w, http.StatusOK, map[string]string{"status": "settled"})
+}
+
 func (s *Server) killNodes(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Percentage int `json:"percentage"`
@@ -156,6 +175,7 @@ func (s *Server) runDemoScenario(w http.ResponseWriter, r *http.Request) {
 			FarmerNodeID:      "farmer-0",
 			Crop:              "Wheat",
 			Quantity:          100,
+			SelfReportedGrade: "A", // Demo default
 			ExpectedPrice:     2000,
 			QualityGrade:      grade.Grade,
 			QualityConfidence: grade.Confidence,

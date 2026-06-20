@@ -6,9 +6,10 @@ type FarmerListing struct {
 	ListingID         string
 	FarmerNodeID      string
 	Crop              string
-	Quantity          float64
-	QualityGrade      string
-	QualityConfidence float64
+	Quantity             float64
+	SelfReportedGrade    string
+	QualityGrade         string
+	QualityConfidence    float64
 	QualityReasoning  string
 	ExpectedPrice     float64
 	Location          string
@@ -55,9 +56,10 @@ type Trade struct {
 	TransporterNodeID string
 	Crop              string
 	Quantity          float64
-	AgreedPrice       float64
-	QualityGrade      string
-	QualityConfidence float64
+	AgreedPrice          float64
+	SelfReportedGrade    string
+	QualityGrade         string
+	QualityConfidence    float64
 	TransportCost        float64
 	FarmerTransportShare float64
 	BuyerTransportShare  float64

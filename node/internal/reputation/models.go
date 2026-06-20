@@ -6,9 +6,10 @@ const (
 	StartingScore         = 50
 	ScoreDelivered        = 2
 	ScoreSettled          = 3
-	PenaltyFailed         = -5
-	PenaltyConsensusAbuse = -10
-	PenaltyDishonest      = -15
+	PenaltyFailed          = -5
+	PenaltyConsensusAbuse  = -10
+	PenaltyDishonest       = -15
+	PenaltyQualityMismatch = -20
 )
 
 type ReputationProfile struct {

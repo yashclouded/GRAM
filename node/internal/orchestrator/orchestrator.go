@@ -121,7 +121,7 @@ func (o *Orchestrator) SubmitTradeProposal(crop string, quantity float64, price 
 }
 
 // SimulateSettlement mimics the post-trade lifecycle (Transit -> Delivered -> Settled/Failed)
-func (o *Orchestrator) SimulateSettlement(tradeID string, farmerID, buyerID, transporterID string, success bool) {
+func (o *Orchestrator) SimulateSettlement(tradeID string, farmerID, buyerID, transporterID string, success bool, aiGrade, buyerReportedGrade string) {
 	// Emit Transit
 	events.Emit(events.TradeShipped, tradeID)
 
@@ -133,6 +133,17 @@ func (o *Orchestrator) SimulateSettlement(tradeID string, farmerID, buyerID, tra
 		o.RepManager.ApplyScore(farmerID, reputation.PenaltyFailed, "FailedTrade")
 		o.RepManager.ApplyScore(transporterID, reputation.PenaltyFailed, "FailedTrade")
 		return
+	}
+
+	if aiGrade != "" && buyerReportedGrade != "" && aiGrade != buyerReportedGrade {
+		// diverge significantly
+		o.RepManager.ApplyScore(farmerID, reputation.PenaltyQualityMismatch, "QualityMismatch")
+		events.Emit(events.QualityMismatch, map[string]string{
+			"TradeID":            tradeID,
+			"FarmerID":           farmerID,
+			"AIGrade":            aiGrade,
+			"BuyerReportedGrade": buyerReportedGrade,
+		})
 	}
 
 	// Emit Delivered

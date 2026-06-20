@@ -39,6 +39,7 @@ const (
 	TradeDelivered    EventType = "TradeDelivered"
 	TradeSettled      EventType = "TradeSettled"
 	TradeFailed       EventType = "TradeFailed"
+	QualityMismatch   EventType = "QualityMismatch"
 	NodeBlacklisted   EventType = "NodeBlacklisted"
 )
 

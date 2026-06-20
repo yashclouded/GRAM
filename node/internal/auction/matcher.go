@@ -85,6 +85,11 @@ func GenerateMatches(listings []FarmerListing, demands []BuyerDemand, offers []T
 
 				baseScore := quantityScore + marginScore
 
+				// Penalize if the AI grade strongly disagrees with the farmer's self-reported grade
+				if l.SelfReportedGrade != "" && l.SelfReportedGrade != l.QualityGrade {
+					baseScore -= 15.0
+				}
+
 				candidate := MatchCandidate{
 					Listing:     l,
 					Demand:      d,
@@ -150,6 +155,7 @@ func GenerateMatches(listings []FarmerListing, demands []BuyerDemand, offers []T
 			Crop:                 c.Listing.Crop,
 			Quantity:             c.Demand.RequiredQuantity, // Fulfilling exactly what buyer requested
 			AgreedPrice:          finalPrice,
+			SelfReportedGrade:    c.Listing.SelfReportedGrade,
 			QualityGrade:         c.Listing.QualityGrade,
 			QualityConfidence:    c.Listing.QualityConfidence,
 			TransportCost:        totalTransport,

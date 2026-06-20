@@ -132,11 +132,11 @@ func main() {
 	
 	t1ID := fmt.Sprintf("trade-%s-%s-%s", "L1", "D1", "O1")
 	fmt.Printf("   [Simulating] Trade %s -> SUCCESSFUL DELIVERY\n", t1ID)
-	orch.SimulateSettlement(t1ID, "farmer-0", "buyer-0", "transporter-0", true)
+	orch.SimulateSettlement(t1ID, "farmer-0", "buyer-0", "transporter-0", true, grade.Grade, grade.Grade)
 
 	t2ID := fmt.Sprintf("trade-%s-%s-%s", "L4", "D5", "O3")
 	fmt.Printf("   [Simulating] Trade %s -> FAILED DELIVERY\n", t2ID)
-	orch.SimulateSettlement(t2ID, "farmer-4", "buyer-8", "transporter-4", false)
+	orch.SimulateSettlement(t2ID, "farmer-4", "buyer-8", "transporter-4", false, "", "")
 	time.Sleep(200 * time.Millisecond)
 
 	fmt.Println("\n=======================================")
