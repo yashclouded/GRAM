@@ -1,130 +1,330 @@
 import React, { useState, useEffect } from 'react';
-import { Store, Loader2, IndianRupee, MapPin, LogOut } from 'lucide-react';
+import { Store, Loader2, Search, Package, ShoppingBag, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api';
+import AppShell from '../components/AppShell';
+import StatusBadge from '../components/StatusBadge';
+import EmptyState from '../components/EmptyState';
 
 const dict = {
   en: {
-    appTitle: "Gram Buyer",
-    availableCrops: "Available Crops",
-    qualityGrade: "Grade",
-    placeDemand: "Place Demand",
-    rupeesPerQuintal: "₹/Quintal",
-    quantity: "Qty: ",
-    buyNow: "Buy Now"
+    appTitle: 'GRAM Buyer',
+    tabBrowse: 'Browse',
+    tabOrders: 'My Orders',
+    searchPlaceholder: 'Search crop...',
+    filterGrade: 'Grade',
+    filterAll: 'All',
+    filterMaxPrice: 'Max Price',
+    noListings: 'No listings available.',
+    noListingsSub: 'Check back soon — farmers are listing crops.',
+    noOrders: 'No orders yet.',
+    noOrdersSub: 'Browse listings and place your first order.',
+    grade: 'Grade',
+    qty: 'Qty',
+    placeOrder: 'Place Order',
+    placing: 'Placing...',
+    confirmDelivery: 'Confirm Delivery',
+    confirming: 'Confirming...',
+    orderQty: 'Order Quantity',
+    maxQty: 'Max',
+    cancel: 'Cancel',
+    confirm: 'Confirm Order',
+    orderSuccess: 'Order placed!',
+    errQty: 'Please enter a valid quantity.',
+    errMaxQty: 'Quantity cannot exceed available stock.',
+    farmer: 'Farmer',
+    transporter: 'Transporter',
+    notAssigned: 'Not yet assigned',
   },
   hi: {
-    appTitle: "ग्राम खरीदार",
-    availableCrops: "उपलब्ध फसलें",
-    qualityGrade: "श्रेणी",
-    placeDemand: "मांग रखें",
-    rupeesPerQuintal: "₹/क्विंटल",
-    quantity: "मात्रा: ",
-    buyNow: "अभी खरीदें"
+    appTitle: 'ग्राम खरीदार',
+    tabBrowse: 'देखें',
+    tabOrders: 'मेरे ऑर्डर',
+    searchPlaceholder: 'फसल खोजें...',
+    filterGrade: 'श्रेणी',
+    filterAll: 'सभी',
+    filterMaxPrice: 'अधिकतम मूल्य',
+    noListings: 'कोई लिस्टिंग उपलब्ध नहीं।',
+    noListingsSub: 'जल्द देखें — किसान फसल सूचीबद्ध कर रहे हैं।',
+    noOrders: 'अभी तक कोई ऑर्डर नहीं।',
+    noOrdersSub: 'लिस्टिंग देखें और अपना पहला ऑर्डर दें।',
+    grade: 'श्रेणी',
+    qty: 'मात्रा',
+    placeOrder: 'ऑर्डर दें',
+    placing: 'ऑर्डर हो रहा है...',
+    confirmDelivery: 'डिलीवरी पुष्टि करें',
+    confirming: 'पुष्टि हो रही है...',
+    orderQty: 'ऑर्डर मात्रा',
+    maxQty: 'अधिकतम',
+    cancel: 'रद्द करें',
+    confirm: 'ऑर्डर पुष्टि करें',
+    orderSuccess: 'ऑर्डर दिया गया!',
+    errQty: 'एक वैध मात्रा दर्ज करें।',
+    errMaxQty: 'मात्रा उपलब्ध स्टॉक से अधिक नहीं हो सकती।',
+    farmer: 'किसान',
+    transporter: 'ट्रांसपोर्टर',
+    notAssigned: 'अभी नियुक्त नहीं',
   }
 };
 
-export default function BuyerApp() {
-  const { user, profile, supabase } = useAuth();
-  const { lang, setLang } = useLanguage();
-  const t = dict[lang];
-
+// ─── Order Modal ───────────────────────────────────────────────────────────────
+function OrderModal({ listing, onClose, onPlace, lang, t }) {
+  const [qty, setQty] = useState('');
   const [loading, setLoading] = useState(false);
-  const [listings, setListings] = useState([]);
-  const [oraclePrice, setOraclePrice] = useState(null);
+  const [error, setError] = useState('');
 
-  // In a real app we'd fetch this from the backend or Supabase
-  // For the demo, we show some mock/real active listings
-  useEffect(() => {
-    // Fetch fair price on mount
-    fetch(`${API_URL}/oracle/price?commodity=Wheat`)
-      .then(res => res.json())
-      .then(data => setOraclePrice(data.price))
-      .catch(console.error);
-
-    // Mock listings
-    setListings([
-      { id: '1', crop: 'Wheat', grade: 'A', price: 2500, qty: 100, location: 'Pune, MH' },
-      { id: '2', crop: 'Rice', grade: 'B', price: 2100, qty: 50, location: 'Nashik, MH' }
-    ]);
-  }, []);
-
-  const handleBuy = async (listing) => {
+  const submit = async () => {
+    if (!qty || isNaN(qty) || +qty <= 0) { setError(t.errQty); return; }
+    if (+qty > listing.quantity) { setError(t.errMaxQty); return; }
     setLoading(true);
-    try {
-      // 1. Submit Demand
-      await fetch(`${API_URL}/market/demand`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          BuyerNodeID: user?.id || "buyer-0",
-          Crop: listing.crop,
-          RequiredQuantity: listing.qty,
-          MaxPrice: listing.price + 200 // Buyer is willing to pay a bit more
-        })
-      });
-
-      // 2. Trigger Market Cycle
-      await fetch(`${API_URL}/market/run`, { method: 'POST' });
-      alert("Demand Placed! Network matching in progress.");
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
+    await onPlace(listing, +qty);
+    setLoading(false);
+    onClose();
   };
 
   return (
-    <div className="farmer-app">
-      <header className="farmer-header">
-        <h1><Store size={24} /> {t.appTitle}</h1>
-        <div style={{display: 'flex', gap: '0.5rem', alignItems: 'center'}}>
-          <button className="lang-toggle" onClick={() => setLang(lang === 'en' ? 'hi' : 'en')}>
-            {lang === 'en' ? 'हिंदी' : 'English'}
-          </button>
-          <button className="lang-toggle" onClick={() => user && supabase.auth.signOut()} style={{background: 'none', padding: '0.2rem'}} title="Logout">
-            <LogOut size={20} color="#666"/>
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-card" onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <h2 style={{ margin: 0 }}>{listing.crop} — {lang === 'en' ? 'Grade' : 'श्रेणी'} {listing.grade}</h2>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0.25rem' }}><X size={20} /></button>
+        </div>
+        <p style={{ color: '#666', fontSize: '0.9rem', marginBottom: '1rem' }}>
+          ₹{listing.price_per_unit}/{listing.unit} · {listing.location}
+        </p>
+        {error && <div className="auth-error">{error}</div>}
+        <div className="input-group">
+          <label>{t.orderQty} ({t.maxQty}: {listing.quantity} {listing.unit})</label>
+          <input
+            id="buyer-order-qty"
+            type="number" min="0.1" step="0.1" max={listing.quantity}
+            value={qty} onChange={e => { setQty(e.target.value); setError(''); }}
+            placeholder={String(listing.quantity)}
+          />
+        </div>
+        <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem' }}>
+          <button className="sell-btn" style={{ flex: 1, background: '#aaa' }} onClick={onClose}>{t.cancel}</button>
+          <button id="buyer-confirm-order" className="sell-btn" style={{ flex: 2 }} onClick={submit} disabled={loading}>
+            {loading ? <Loader2 className="spin" size={16} /> : t.confirm}
           </button>
         </div>
-      </header>
-
-      <main className="farmer-content">
-        <h2 style={{color: '#444', marginBottom: '0.5rem'}}>{t.availableCrops}</h2>
-        {oraclePrice && (
-          <div style={{color: '#2e7d32', fontSize: '0.9rem', marginBottom: '1rem', padding: '0.8rem', backgroundColor: '#e8f5e9', borderRadius: '8px', border: '1px solid #c8e6c9'}}>
-            <strong>Fair Market Reference (Wheat):</strong> ₹{oraclePrice} / Quintal
-          </div>
-        )}
-        
-        {listings.map(l => (
-          <div key={l.id} className="farmer-card">
-            <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-              <h2 style={{margin: 0}}>{l.crop}</h2>
-              <span className="grade-badge">{l.grade}</span>
-            </div>
-            
-            <div style={{display: 'flex', gap: '1rem', color: '#666', fontSize: '0.9rem', marginTop: '0.5rem'}}>
-              <span style={{display: 'flex', alignItems: 'center', gap: '4px'}}><MapPin size={14}/> {l.location}</span>
-              <span>{t.quantity}{l.qty} Qtl</span>
-            </div>
-
-            <div className="price-text" style={{marginTop: '1rem'}}>
-              ₹{l.price} <span style={{fontSize:'0.9rem', color:'#666', fontWeight:'normal'}}>{t.rupeesPerQuintal}</span>
-            </div>
-
-            <button 
-              className="sell-btn" 
-              onClick={() => handleBuy(l)}
-              disabled={loading}
-              style={{marginTop: '1rem'}}
-            >
-              {loading ? <Loader2 className="spin" size={20}/> : t.buyNow}
-            </button>
-          </div>
-        ))}
-      </main>
+      </div>
     </div>
+  );
+}
+
+// ─── Browse Tab ─────────────────────────────────────────────────────────────────
+function BrowseTab({ supabase, user, lang, t }) {
+  const [listings, setListings] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [gradeFilter, setGradeFilter] = useState('');
+  const [maxPrice, setMaxPrice] = useState('');
+  const [selectedListing, setSelectedListing] = useState(null);
+  const [toast, setToast] = useState('');
+
+  useEffect(() => {
+    fetchListings();
+    const ch = supabase.channel('listings-browse')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'listings' }, () => fetchListings())
+      .subscribe();
+    return () => supabase.removeChannel(ch);
+  }, []);
+
+  const fetchListings = async () => {
+    setLoading(true);
+    const { data } = await supabase
+      .from('listings')
+      .select('*, profiles(name)')
+      .eq('status', 'available')
+      .order('created_at', { ascending: false });
+    setListings(data || []);
+    setLoading(false);
+  };
+
+  const placeOrder = async (listing, qty) => {
+    await supabase.from('orders').insert({
+      listing_id: listing.id,
+      buyer_id: user.id,
+      farmer_id: listing.farmer_id,
+      quantity: qty,
+      agreed_price: listing.price_per_unit,
+    });
+    setToast(t.orderSuccess);
+    setTimeout(() => setToast(''), 2500);
+  };
+
+  const visible = listings.filter(l => {
+    if (search && !l.crop.toLowerCase().includes(search.toLowerCase())) return false;
+    if (gradeFilter && l.grade !== gradeFilter) return false;
+    if (maxPrice && l.price_per_unit > +maxPrice) return false;
+    return true;
+  });
+
+  return (
+    <>
+      {toast && <div className="auth-success" style={{ marginBottom: '1rem' }}>{toast}</div>}
+      {/* Filters */}
+      <div className="filter-bar">
+        <div className="input-icon-wrap" style={{ flex: 2 }}>
+          <Search size={16} className="input-icon" />
+          <input
+            id="buyer-search"
+            type="text" value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder={t.searchPlaceholder}
+          />
+        </div>
+        <select id="buyer-grade-filter" value={gradeFilter} onChange={e => setGradeFilter(e.target.value)} style={{ flex: 1 }}>
+          <option value="">{t.filterAll}</option>
+          {['A', 'B', 'C'].map(g => <option key={g} value={g}>{t.filterGrade} {g}</option>)}
+        </select>
+        <input
+          id="buyer-price-filter"
+          type="number" value={maxPrice}
+          onChange={e => setMaxPrice(e.target.value)}
+          placeholder={`${t.filterMaxPrice} ₹`}
+          style={{ flex: 1 }}
+        />
+      </div>
+
+      {loading
+        ? <div style={{ textAlign: 'center', padding: '2rem' }}><Loader2 className="spin" size={28} color="#2e7d32" /></div>
+        : !visible.length
+          ? <EmptyState icon={ShoppingBag} title={t.noListings} subtitle={t.noListingsSub} />
+          : (
+            <div className="listings-grid">
+              {visible.map(l => (
+                <div key={l.id} className="farmer-card listing-card">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div>
+                      <h3 style={{ margin: 0 }}>{l.crop}</h3>
+                      <p style={{ color: '#666', fontSize: '0.82rem', margin: '0.25rem 0 0' }}>
+                        {l.location}
+                      </p>
+                    </div>
+                    <span className="grade-badge">{l.grade}</span>
+                  </div>
+                  <p style={{ color: '#555', fontSize: '0.85rem', marginTop: '0.5rem' }}>
+                    {t.qty}: {l.quantity} {l.unit}
+                  </p>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.75rem' }}>
+                    <span className="price-text" style={{ fontSize: '1.15rem' }}>₹{l.price_per_unit}<span style={{ fontSize: '0.8rem', fontWeight: 400, color: '#888' }}>/{l.unit}</span></span>
+                    <button
+                      id={`buy-btn-${l.id}`}
+                      className="sell-btn"
+                      style={{ padding: '0.5rem 1.25rem', fontSize: '0.9rem' }}
+                      onClick={() => setSelectedListing(l)}
+                    >
+                      {t.placeOrder}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
+      }
+
+      {selectedListing && (
+        <OrderModal
+          listing={selectedListing}
+          onClose={() => setSelectedListing(null)}
+          onPlace={placeOrder}
+          lang={lang}
+          t={t}
+        />
+      )}
+    </>
+  );
+}
+
+// ─── My Orders Tab ─────────────────────────────────────────────────────────────
+function MyOrdersTab({ supabase, user, lang, t }) {
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [confirming, setConfirming] = useState(null);
+
+  useEffect(() => {
+    fetchOrders();
+    const ch = supabase.channel('buyer-orders')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `buyer_id=eq.${user.id}` },
+        () => fetchOrders())
+      .subscribe();
+    return () => supabase.removeChannel(ch);
+  }, []);
+
+  const fetchOrders = async () => {
+    setLoading(true);
+    const { data } = await supabase
+      .from('orders')
+      .select('*, listings(crop, unit, price_per_unit, location), profiles!orders_farmer_id_fkey(name)')
+      .eq('buyer_id', user.id)
+      .order('created_at', { ascending: false });
+    setOrders(data || []);
+    setLoading(false);
+  };
+
+  const confirmDelivery = async (orderId) => {
+    setConfirming(orderId);
+    await supabase.from('orders').update({ status: 'delivered' }).eq('id', orderId);
+    setConfirming(null);
+    fetchOrders();
+  };
+
+  if (loading) return <div style={{ textAlign: 'center', padding: '2rem' }}><Loader2 className="spin" size={28} color="#2e7d32" /></div>;
+  if (!orders.length) return <EmptyState icon={Package} title={t.noOrders} subtitle={t.noOrdersSub} />;
+
+  return (
+    <div className="listings-grid">
+      {orders.map(o => (
+        <div key={o.id} className="farmer-card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              <h3 style={{ margin: 0 }}>{o.listings?.crop}</h3>
+              <p style={{ color: '#666', fontSize: '0.83rem', marginTop: '0.25rem' }}>
+                {o.quantity} {o.listings?.unit} · ₹{o.agreed_price}/{o.listings?.unit}
+              </p>
+            </div>
+            <StatusBadge status={o.status} lang={lang} />
+          </div>
+          <p style={{ fontSize: '0.8rem', color: '#888', marginTop: '0.5rem' }}>
+            {t.farmer}: {o.profiles?.name || '—'}
+          </p>
+          {o.status === 'in_transit' && (
+            <button
+              id={`confirm-delivery-${o.id}`}
+              className="sell-btn"
+              style={{ marginTop: '1rem', padding: '0.55rem' }}
+              disabled={confirming === o.id}
+              onClick={() => confirmDelivery(o.id)}
+            >
+              {confirming === o.id ? <Loader2 className="spin" size={16} /> : t.confirmDelivery}
+            </button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Main ──────────────────────────────────────────────────────────────────────
+export default function BuyerApp() {
+  const { user, supabase } = useAuth();
+  const { lang } = useLanguage();
+  const t = dict[lang];
+  const [tab, setTab] = useState('browse');
+
+  return (
+    <AppShell icon={Store} title={t.appTitle}>
+      <div className="tab-bar">
+        {[['browse', ShoppingBag, t.tabBrowse], ['orders', Package, t.tabOrders]].map(([id, Icon, label]) => (
+          <button key={id} id={`buyer-tab-${id}`} className={`tab-btn ${tab === id ? 'active' : ''}`} onClick={() => setTab(id)}>
+            <Icon size={16} /><span>{label}</span>
+          </button>
+        ))}
+      </div>
+      {tab === 'browse' && <BrowseTab supabase={supabase} user={user} lang={lang} t={t} />}
+      {tab === 'orders' && <MyOrdersTab supabase={supabase} user={user} lang={lang} t={t} />}
+    </AppShell>
   );
 }
