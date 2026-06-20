@@ -16,7 +16,7 @@ Core guarantees:
 
 **Phase 0 (Current: Hackathon MVP)** — A fully functional simulated mesh running Go in the backend. The React frontend connects real users to this simulated P2P network, with Supabase used purely for Auth (not data storage logic). The Go backend simulates N concurrent independent nodes in memory to prove the Snowball consensus and VCG auction math works at scale.
 
-**Phase 1 (Next: True P2P)** — The Go backend will be compiled to WebAssembly and shipped inside the React app itself. Each browser tab becomes a node. Supabase Auth will be replaced by GunDB's cryptographic key pairs (SEA). All data will live in IndexedDB and gossip over WebRTC directly between browsers. No server. No cloud database. Internet is used only for initial WebRTC signaling (peer discovery).
+**Phase 1 (Next: Browser-Native Mesh)** — The deterministic protocol core (Snowball consensus, VCG auctioning, Shapley cost split, trust score updates) will move into the React app as a browser-resident node runtime. Each browser tab or device becomes a node. Supabase Auth will be replaced by locally generated cryptographic identity keys. Market state will live in IndexedDB as signed local-first records and gossip over WebRTC directly between browsers. Optional rendezvous or relay helpers may assist connectivity, but they never store market state or act as coordinators.
 
 ---
 
@@ -40,7 +40,7 @@ Core guarantees:
     /pages       # FarmerApp, BuyerApp, TransporterApp, LandingPage, SciencePage, NetworkConsole
     /components  # AppShell, ChatWidget, NotificationBell, Mermaid
     /contexts    # AuthContext, LanguageContext
-/docs            # Design doc, glossary, architecture notes
+/docs            # Design doc, glossary, architecture notes, Phase 1 transition blueprint
 ```
 
 ---
@@ -102,50 +102,50 @@ The app runs fully locally. The only external calls are:
 
 ## Phase 1 Theory: Serverless Decentralized Architecture
 
-This section documents the **target production architecture**. Nothing below exists in code yet. It is the blueprint for transforming the Phase 0 hackathon demo into a production-grade, zero-server P2P system.
+This section documents the **target production architecture**. Nothing below exists in code yet. It is the blueprint for transforming the Phase 0 hackathon demo into a production-grade, coordinator-free browser mesh.
+
+For the detailed migration plan and feasibility notes, see `docs/PHASE_1_SERVERLESS_TRANSITION.md`.
 
 ### The Core Principle
 
-Every device is a node. No machine holds a privileged position. The internet is used only for peer discovery (WebRTC signaling) — never for data storage or business logic.
+Every device is a node. No machine holds a privileged position. The internet may assist with peer discovery or relay on hostile networks, but it must never hold business state, price a trade, or decide consensus.
 
 ```
-Phase 0 (Now):         Phase 1 (Target):
-User Phone             User Phone
-    |                      |
-    v                      | (WebRTC Data Channel — direct)
-  Go Server            Other User Phone
-    |                      |
-  Supabase DB         IndexedDB (local)
+Phase 0 (Now):                 Phase 1 (Target):
+User Phone -> Go Server        User Phone <-> Other User Phone
+User Phone -> Supabase Auth       (WebRTC Data Channel — direct)
+Go Server  -> In-Memory Mesh   User Phone -> IndexedDB (local)
 ```
 
 ### Layer-by-Layer Transition Plan
 
 **Authentication**
 - Phase 0: Supabase Auth (JWT, email/password)
-- Phase 1: GunDB SEA (Security, Encryption, Authorization). Each user generates a local elliptic-curve keypair on first launch. Their public key is their identity. No passwords stored centrally. No email required.
+- Phase 1: locally generated cryptographic identity keys. Each device generates a local keypair on first launch, signs its profile and market actions, and can export encrypted recovery material without a central password database.
 
 **Database / State**
-- Phase 0: Supabase PostgreSQL
-- Phase 1: GunDB graph database stored in `IndexedDB` on each device. Writes gossip to all connected peers over WebRTC. CRDTs ensure eventual consistency without a coordinator.
+- Phase 0: in-memory Go mesh state, plus Supabase PostgreSQL only for auth/profile metadata
+- Phase 1: a signed append-only event log stored in `IndexedDB` on each device, with derived local views for listings, demands, trade proposals, deliveries, and trust score history. Data gossips over WebRTC and converges without a coordinator.
 
 **Consensus & Auction Logic**
 - Phase 0: Go Snowball engine running on our server, gossiping between in-memory goroutines
-- Phase 1: Compile Go consensus and VCG auction code to **WebAssembly (WASM)** using `GOOS=js GOARCH=wasm`. Load the WASM blob in the React app. Each browser tab locally executes the consensus math and gossips signed proposals via GunDB WebRTC.
+- Phase 1: extract the deterministic protocol core from the Go backend and run it in the browser as **WebAssembly (WASM)** or an equivalent TypeScript port. Each browser tab locally executes the consensus math, VCG pricing, Shapley cost split, and trust score updates on signed proposals.
 
 **Networking**
 - Phase 0: HTTP REST + Gorilla WebSockets to our server
-- Phase 1: `js-libp2p` with WebRTC transport. Browsers connect directly. The only external call is an initial connection to a public STUN/TURN server (e.g., Google's public STUN) to negotiate NAT traversal and exchange ICE candidates.
+- Phase 1: `js-libp2p` with WebRTC transport. Browsers connect directly where possible. Discovery and NAT traversal can use optional signaling, STUN, or relay helpers, but those helpers remain outside the authority and storage path.
 
 **AI / Oracle**
 - Phase 0: Go server proxies image to Hack Club / Gemini API
-- Phase 1: Browser calls Gemini API directly with user's own API key, OR we ship a tiny quantized vision model (ONNX Runtime Web) that runs entirely in the browser for offline crop grading.
+- Phase 1: Browser AI is advisory only. Agents may use bring-your-own-key inference or a small offline model for crop grading, but the oracle flag remains non-blocking and never becomes a centralized enforcement point.
 
 ### Known Risks for Phase 1
 
-- **NAT Traversal**: Strict WiFi networks (conference centers, hotels) often block WebRTC. A fallback TURN relay server is required for these environments. This is the only infrastructure we would need.
-- **Cold Start / Peer Discovery**: On an empty network (first user), there are no peers to gossip to. GunDB's relay peers (`gun.js.org/gun/`) serve as bootstrap nodes to introduce peers to each other, after which data flows directly.
-- **Mobile Safari**: IndexedDB storage limits on iOS are aggressive. We will need a fallback to `localStorage` with LZ compression for low-storage devices.
-- **WASM Binary Size**: A compiled Go WASM binary is typically 5-15MB. This needs to be served with `Content-Encoding: br` (Brotli) and cached aggressively with Service Workers.
+- **NAT Traversal**: Strict WiFi networks (conference centers, hotels) often block direct WebRTC. Relay assistance may be needed, but it must remain a dumb packet forwarder with zero protocol authority.
+- **Cold Start / Peer Discovery**: On an empty network (first user), there are no peers to gossip to. Manual invite links, QR pairing, or community-run signaling endpoints can bootstrap connections, after which state lives only on agents.
+- **Mobile Safari**: IndexedDB storage limits on iOS are aggressive. We will need compact shard retention, snapshot pruning, and export/import recovery instead of assuming deep offline history on every device.
+- **WASM Binary Size**: Shipping the entire backend would be too large. Only the deterministic protocol core should move into WASM, and it should be Brotli-compressed and cached aggressively with Service Workers.
+- **Identity Recovery**: Serverless identity improves autonomy but makes account recovery harder. Exportable encrypted recovery bundles are required for non-technical agents.
 
 ---
 
