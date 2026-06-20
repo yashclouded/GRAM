@@ -35,9 +35,8 @@ func TestContinuousTrustWeighting(t *testing.T) {
 		"t1":           {NodeID: "t1", Score: 50},
 	}
 
-	// Generate matches
-	trades := GenerateMatches(listings, demands, offers, repMap)
-
+	// 1. Basic Matching
+	trades := GenerateMatches(listings, demands, offers, repMap, nil)
 	if len(trades) != 1 {
 		t.Fatalf("Expected exactly 1 trade to clear, got %d", len(trades))
 	}

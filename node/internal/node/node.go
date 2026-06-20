@@ -8,6 +8,7 @@ import (
 	"github.com/yashsingh/agrinerve/node/internal/consensus"
 	"github.com/yashsingh/agrinerve/node/internal/events"
 	"github.com/yashsingh/agrinerve/node/internal/network"
+	"github.com/yashsingh/agrinerve/node/internal/oracle"
 )
 
 type NodeType string
@@ -40,9 +41,10 @@ type Node struct {
 	offers         []auction.TransportOffer
 	stateMu        sync.RWMutex
 	proposedTrades sync.Map
+	Oracle         *oracle.PriceOracle
 }
 
-func NewNode(id string, nType NodeType, router *network.Router) *Node {
+func NewNode(id string, nType NodeType, router *network.Router, oracle *oracle.PriceOracle) *Node {
 	n := &Node{
 		ID:       id,
 		Type:     nType,
@@ -53,6 +55,7 @@ func NewNode(id string, nType NodeType, router *network.Router) *Node {
 		listings: make([]auction.FarmerListing, 0),
 		demands:  make([]auction.BuyerDemand, 0),
 		offers:   make([]auction.TransportOffer, 0),
+		Oracle:   oracle,
 	}
 	router.Register(n)
 	events.Emit(events.NodeSpawned, n.ID)
@@ -182,7 +185,7 @@ func (n *Node) runLocalMatcher() {
 	n.stateMu.RUnlock()
 
 	// Pure matching algorithm on local view
-	trades := auction.GenerateMatches(listingsCopy, demandsCopy, offersCopy, nil)
+	trades := auction.GenerateMatches(listingsCopy, demandsCopy, offersCopy, nil, n.Oracle)
 
 	for _, t := range trades {
 		if _, proposed := n.proposedTrades.LoadOrStore(t.TradeID, true); !proposed {

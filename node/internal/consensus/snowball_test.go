@@ -14,7 +14,7 @@ func TestSnowballConsensus_HonestNetwork(t *testing.T) {
 	var nodes []*node.Node
 	for i := 0; i < 20; i++ {
 		id := "node-" + string(rune('A'+i))
-		n := node.NewNode(id, node.Farmer, router)
+		n := node.NewNode(id, node.Farmer, router, nil)
 		n.Start()
 		nodes = append(nodes, n)
 	}
@@ -53,7 +53,7 @@ func TestSnowballConsensus_OfflineNodes(t *testing.T) {
 	var nodes []*node.Node
 	for i := 0; i < 20; i++ {
 		id := "node-" + string(rune('A'+i))
-		n := node.NewNode(id, node.Farmer, router)
+		n := node.NewNode(id, node.Farmer, router, nil)
 		n.Start()
 		nodes = append(nodes, n)
 	}
@@ -97,7 +97,7 @@ func TestSnowballConsensus_InvalidTrade(t *testing.T) {
 	var nodes []*node.Node
 	for i := 0; i < 20; i++ {
 		id := "node-" + string(rune('A'+i))
-		n := node.NewNode(id, node.Farmer, router)
+		n := node.NewNode(id, node.Farmer, router, nil)
 		n.Start()
 		nodes = append(nodes, n)
 	}
@@ -134,7 +134,7 @@ func TestSnowballConsensus_DishonestNodes(t *testing.T) {
 	var nodes []*node.Node
 	for i := 0; i < 20; i++ {
 		id := "node-" + string(rune('A'+i))
-		n := node.NewNode(id, node.Farmer, router)
+		n := node.NewNode(id, node.Farmer, router, nil)
 		n.Start()
 		nodes = append(nodes, n)
 	}

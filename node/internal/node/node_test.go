@@ -12,7 +12,7 @@ func TestNetworkAndGossip(t *testing.T) {
 	var nodes []*Node
 	for i := 0; i < 10; i++ {
 		id := "node-" + string(rune('A'+i))
-		n := NewNode(id, Farmer, router)
+		n := NewNode(id, Farmer, router, nil)
 		n.Start()
 		nodes = append(nodes, n)
 	}

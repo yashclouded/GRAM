@@ -33,10 +33,17 @@ export default function BuyerApp() {
 
   const [loading, setLoading] = useState(false);
   const [listings, setListings] = useState([]);
+  const [oraclePrice, setOraclePrice] = useState(null);
 
   // In a real app we'd fetch this from the backend or Supabase
   // For the demo, we show some mock/real active listings
   useEffect(() => {
+    // Fetch fair price on mount
+    fetch(`${API_URL}/oracle/price?commodity=Wheat`)
+      .then(res => res.json())
+      .then(data => setOraclePrice(data.price))
+      .catch(console.error);
+
     // Mock listings
     setListings([
       { id: '1', crop: 'Wheat', grade: 'A', price: 2500, qty: 100, location: 'Pune, MH' },
@@ -85,6 +92,11 @@ export default function BuyerApp() {
 
       <main className="farmer-content">
         <h2 style={{color: '#444', marginBottom: '0.5rem'}}>{t.availableCrops}</h2>
+        {oraclePrice && (
+          <div style={{color: '#2e7d32', fontSize: '0.9rem', marginBottom: '1rem', padding: '0.8rem', backgroundColor: '#e8f5e9', borderRadius: '8px', border: '1px solid #c8e6c9'}}>
+            <strong>Fair Market Reference (Wheat):</strong> ₹{oraclePrice} / Quintal
+          </div>
+        )}
         
         {listings.map(l => (
           <div key={l.id} className="farmer-card">

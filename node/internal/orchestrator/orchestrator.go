@@ -11,6 +11,7 @@ import (
 	"github.com/yashsingh/agrinerve/node/internal/events"
 	"github.com/yashsingh/agrinerve/node/internal/network"
 	"github.com/yashsingh/agrinerve/node/internal/node"
+	"github.com/yashsingh/agrinerve/node/internal/oracle"
 	"github.com/yashsingh/agrinerve/node/internal/reputation"
 )
 
@@ -20,6 +21,7 @@ type Orchestrator struct {
 	Nodes       []*node.Node
 	Metrics     *Metrics
 	RepManager  *reputation.Manager
+	Oracle      *oracle.PriceOracle
 	OnEvent     func(events.Event)
 }
 
@@ -28,13 +30,14 @@ func NewOrchestrator() *Orchestrator {
 		Router:     network.NewRouter(),
 		Nodes:      make([]*node.Node, 0),
 		RepManager: reputation.NewManager(),
+		Oracle:     oracle.NewPriceOracle(),
 	}
 }
 
 func (o *Orchestrator) SpawnNode(id string, nodeType node.NodeType) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	n := node.NewNode(id, nodeType, o.Router)
+	n := node.NewNode(id, nodeType, o.Router, o.Oracle)
 	o.Nodes = append(o.Nodes, n)
 }
 
@@ -44,7 +47,7 @@ func (o *Orchestrator) SpawnNodes(count int) {
 
 	for i := 0; i < count; i++ {
 		id := fmt.Sprintf("node-%d", len(o.Nodes))
-		n := node.NewNode(id, node.Farmer, o.Router)
+		n := node.NewNode(id, node.Farmer, o.Router, o.Oracle)
 		o.Nodes = append(o.Nodes, n)
 	}
 }

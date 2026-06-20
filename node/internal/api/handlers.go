@@ -64,6 +64,21 @@ func (s *Server) gradeCrop(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, res)
 }
 
+func (s *Server) getOraclePrice(w http.ResponseWriter, r *http.Request) {
+	commodity := r.URL.Query().Get("commodity")
+	state := r.URL.Query().Get("state")
+	if commodity == "" {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "commodity is required"})
+		return
+	}
+	price := s.Orch.Oracle.GetFairPrice(commodity, state)
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"commodity": commodity,
+		"state":     state,
+		"price":     price,
+	})
+}
+
 func (s *Server) injectGossip(msgType network.MsgType, id string, payload interface{}, timestamp time.Time) {
 	active := s.Orch.GetActiveNodes()
 	if len(active) > 0 {

@@ -57,6 +57,7 @@ func NewServer(orch *orchestrator.Orchestrator) *Server {
 		r.Post("/chaos/kill", s.killNodes)
 		r.Post("/chaos/recover", s.recoverNodes)
 		
+		r.Get("/oracle/price", s.getOraclePrice)
 		r.Post("/ai/grade", s.gradeCrop)
 		
 		// For running the full demo scenario via a single click

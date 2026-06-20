@@ -44,11 +44,18 @@ export default function FarmerApp() {
   const [gradeResult, setGradeResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [tradeStatus, setTradeStatus] = useState('idle'); // idle, matching, accepted, inTransit, settled
+  const [oraclePrice, setOraclePrice] = useState(null);
   const wsRef = useRef(null);
 
   const t = dict[lang];
 
   useEffect(() => {
+    // Fetch fair price on mount
+    fetch(`${API_URL}/oracle/price?commodity=Wheat`)
+      .then(res => res.json())
+      .then(data => setOraclePrice(data.price))
+      .catch(console.error);
+
     // Connect to WebSocket to listen for trade updates for this specific farmer
     const connectWs = () => {
       const ws = new WebSocket(WS_URL);
@@ -187,6 +194,11 @@ export default function FarmerApp() {
         {gradeResult && (
           <div className="farmer-card">
             <h2>{t.cropType}</h2>
+            {oraclePrice && (
+              <div style={{color: '#4caf50', fontSize: '0.9rem', marginBottom: '1rem', fontWeight: '500'}}>
+                Today's Mandi Price: ₹{oraclePrice} / Quintal
+              </div>
+            )}
             <div className="result-box">
               <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
                 <span style={{color: '#666'}}>{t.grade}</span>

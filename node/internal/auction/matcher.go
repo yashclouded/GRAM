@@ -5,6 +5,7 @@ import (
 	"math"
 	"sort"
 
+	"github.com/yashsingh/agrinerve/node/internal/oracle"
 	"github.com/yashsingh/agrinerve/node/internal/reputation"
 )
 
@@ -18,7 +19,7 @@ type MatchCandidate struct {
 }
 
 // GenerateMatches runs the deterministic O(F * B * T) matching algorithm.
-func GenerateMatches(listings []FarmerListing, demands []BuyerDemand, offers []TransportOffer, repMap map[string]*reputation.ReputationProfile) []Trade {
+func GenerateMatches(listings []FarmerListing, demands []BuyerDemand, offers []TransportOffer, repMap map[string]*reputation.ReputationProfile, priceOracle *oracle.PriceOracle) []Trade {
 	var candidates []MatchCandidate
 
 	for _, l := range listings {
@@ -88,6 +89,22 @@ func GenerateMatches(listings []FarmerListing, demands []BuyerDemand, offers []T
 				// Penalize if the AI grade strongly disagrees with the farmer's self-reported grade
 				if l.SelfReportedGrade != "" && l.SelfReportedGrade != l.QualityGrade {
 					baseScore -= 15.0
+				}
+
+				// Check Oracle Price
+				fairPrice := 0.0
+				if priceOracle != nil {
+					fairPrice = priceOracle.GetFairPrice(l.Crop, l.Location)
+				}
+				
+				// Penalize if buyer ceiling is way below fair price or farmer floor is way above
+				if fairPrice > 0 {
+					if d.MaxPrice < fairPrice*0.8 {
+						baseScore -= 20.0 // Buyer is lowballing too much
+					}
+					if l.ExpectedPrice > fairPrice*1.2 {
+						baseScore -= 20.0 // Farmer is overpricing too much
+					}
 				}
 
 				candidate := MatchCandidate{

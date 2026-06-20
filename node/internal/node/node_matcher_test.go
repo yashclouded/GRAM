@@ -11,9 +11,9 @@ import (
 func TestNodeLocalMatcherDeterministic(t *testing.T) {
 	router := network.NewRouter()
 
-	nodeA := NewNode("node-a", Farmer, router)
-	nodeB := NewNode("node-b", Buyer, router)
-	nodeC := NewNode("node-c", Transporter, router)
+	nodeA := NewNode("node-a", Farmer, router, nil)
+	nodeB := NewNode("node-b", Buyer, router, nil)
+	nodeC := NewNode("node-c", Transporter, router, nil)
 
 	nodeA.Start()
 	nodeB.Start()
