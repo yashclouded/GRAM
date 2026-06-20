@@ -228,3 +228,24 @@ func (s *Server) runDemoScenario(w http.ResponseWriter, r *http.Request) {
 	}()
 	respondJSON(w, http.StatusOK, map[string]string{"status": "demo scenario started"})
 }
+
+func (s *Server) aiChat(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Question string            `json:"question"`
+		Lang     string            `json:"lang"`
+		History  []ai.ChatMessage  `json:"history"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid payload"})
+		return
+	}
+
+	agent := ai.NewChatAgent()
+	answer, err := agent.AskQuestion(req.Question, req.Lang, req.History)
+	if err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"answer": answer})
+}

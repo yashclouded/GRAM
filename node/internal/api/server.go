@@ -59,6 +59,7 @@ func NewServer(orch *orchestrator.Orchestrator) *Server {
 		
 		r.Get("/oracle/price", s.getOraclePrice)
 		r.Post("/ai/grade", s.gradeCrop)
+		r.Post("/ai/chat", s.aiChat)
 		
 		// For running the full demo scenario via a single click
 		r.Post("/demo/run", s.runDemoScenario)

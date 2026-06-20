@@ -3,6 +3,8 @@ package ai
 import (
 	"encoding/json"
 	"fmt"
+	"log"
+	"strings"
 	"time"
 
 	"github.com/yashsingh/agrinerve/node/internal/events"
@@ -56,6 +58,17 @@ func (g *Grader) GradeCropImage(base64Image string) CropGrade {
 	})
 
 	rawJSON, err := g.Client.CallChatCompletion(req)
+	if err != nil && (strings.Contains(err.Error(), "429") || strings.Contains(err.Error(), "500")) {
+		log.Println("Hack Club AI failed for grading, falling back to Gemini API...")
+		geminiAns, geminiErr := g.Client.CallGeminiFallback(systemPrompt, base64Image)
+		if geminiErr == nil {
+			rawJSON = geminiAns
+			err = nil
+		} else {
+			log.Printf("Gemini fallback grading also failed: %v", geminiErr)
+		}
+	}
+
 	if err != nil {
 		grade.Reasoning = "AI Grading Failed: " + err.Error()
 		events.Emit(events.AIGradingFailed, grade.Reasoning)
