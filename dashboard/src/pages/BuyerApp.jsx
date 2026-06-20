@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Store, Loader2, Search, Package, ShoppingBag, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useMesh } from '../contexts/MeshContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import AppShell from '../components/AppShell';
 import StatusBadge from '../components/StatusBadge';
@@ -145,7 +146,7 @@ function OrderModal({ listing, onClose, onPlace, lang, t }) {
 }
 
 // ─── Browse Tab ─────────────────────────────────────────────────────────────────
-function BrowseTab({ supabase, user, lang, t }) {
+function BrowseTab({ supabase, user, lang, t, mesh }) {
   const [listings, setListings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -174,13 +175,25 @@ function BrowseTab({ supabase, user, lang, t }) {
   };
 
   const placeOrder = async (listing, qty, bidPrice) => {
-    await supabase.from('orders').insert({
+    const { data: order } = await supabase.from('orders').insert({
       listing_id: listing.id,
       buyer_id: user.id,
       farmer_id: listing.farmer_id,
       quantity: qty,
       agreed_price: bidPrice,
-    });
+    }).select('*').single();
+    if (order) {
+      await mesh?.recordDemandCreated({
+        id: order.id,
+        listing_id: listing.id,
+        crop: listing.crop,
+        quantity: qty,
+        bid_price: bidPrice,
+        location: listing.location,
+        buyer_id: user.id,
+        farmer_id: listing.farmer_id,
+      });
+    }
     setToast(t.orderSuccess);
     setTimeout(() => setToast(''), 2500);
   };
@@ -270,7 +283,7 @@ function BrowseTab({ supabase, user, lang, t }) {
 }
 
 // ─── My Orders Tab ─────────────────────────────────────────────────────────────
-function MyOrdersTab({ supabase, user, lang, t }) {
+function MyOrdersTab({ supabase, user, lang, t, mesh }) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [confirming, setConfirming] = useState(null);
@@ -299,6 +312,16 @@ function MyOrdersTab({ supabase, user, lang, t }) {
   const confirmDelivery = async (orderId) => {
     setConfirming(orderId);
     await supabase.from('orders').update({ status: 'delivered' }).eq('id', orderId);
+    const order = orders.find((item) => item.id === orderId);
+    if (order) {
+      await mesh?.recordDeliveryStatusChanged({
+        id: order.id,
+        listing_id: order.listing_id,
+        crop: order.listings?.crop,
+        location: order.listings?.location,
+        status: 'delivered',
+      });
+    }
     setConfirming(null);
     fetchOrders();
   };
@@ -306,11 +329,32 @@ function MyOrdersTab({ supabase, user, lang, t }) {
   const updateBid = async (orderId, newPrice) => {
     if (!newPrice) return;
     await supabase.from('orders').update({ agreed_price: newPrice }).eq('id', orderId);
+    const order = orders.find((item) => item.id === orderId);
+    if (order) {
+      await mesh?.publishEvent('offer.updated', {
+        id: orderId,
+        listing_id: order.listing_id,
+        crop: order.listings?.crop,
+        location: order.listings?.location,
+        agreed_price: Number(newPrice),
+      });
+    }
     fetchOrders();
   };
 
   const acceptOffer = async (orderId) => {
     await supabase.from('orders').update({ status: 'accepted' }).eq('id', orderId);
+    const order = orders.find((item) => item.id === orderId);
+    if (order) {
+      await mesh?.publishEvent('trade.accepted', {
+        id: order.id,
+        listing_id: order.listing_id,
+        crop: order.listings?.crop,
+        location: order.listings?.location,
+        quantity: order.quantity,
+        agreed_price: order.agreed_price,
+      });
+    }
     fetchOrders();
   };
 
@@ -393,6 +437,7 @@ function MyOrdersTab({ supabase, user, lang, t }) {
 // ─── Main ──────────────────────────────────────────────────────────────────────
 export default function BuyerApp() {
   const { user, supabase } = useAuth();
+  const mesh = useMesh();
   const { lang } = useLanguage();
   const t = dict[lang];
   const [tab, setTab] = useState('browse');
@@ -406,8 +451,8 @@ export default function BuyerApp() {
           </button>
         ))}
       </div>
-      {tab === 'browse' && <BrowseTab supabase={supabase} user={user} lang={lang} t={t} />}
-      {tab === 'orders' && <MyOrdersTab supabase={supabase} user={user} lang={lang} t={t} />}
+      {tab === 'browse' && <BrowseTab supabase={supabase} user={user} lang={lang} t={t} mesh={mesh} />}
+      {tab === 'orders' && <MyOrdersTab supabase={supabase} user={user} lang={lang} t={t} mesh={mesh} />}
     </AppShell>
   );
 }

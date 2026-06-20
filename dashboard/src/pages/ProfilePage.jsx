@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useMesh } from '../contexts/MeshContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { User, Loader2, ArrowLeft } from 'lucide-react';
 import AppShell from '../components/AppShell';
@@ -44,6 +45,7 @@ const dict = {
 
 export default function ProfilePage() {
   const { user, profile, updateProfile, supabase } = useAuth();
+  const mesh = useMesh();
   const { lang, setLang } = useLanguage();
   const navigate = useNavigate();
   const t = dict[lang];
@@ -98,6 +100,18 @@ export default function ProfilePage() {
           <p style={{ margin: 0, fontSize: '0.82rem', color: '#888' }}>{user?.email}</p>
           <p style={{ margin: '0.25rem 0 0', fontSize: '0.85rem', color: '#555', fontWeight: 600 }}>
             {t.role}: {roleLabel}
+          </p>
+        </div>
+
+        <div style={{ marginBottom: '1.25rem', padding: '0.85rem', background: '#eef6ff', borderRadius: '10px', border: '1px solid #d8e9ff' }}>
+          <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>
+            Phase 1 Local Node
+          </p>
+          <p style={{ margin: '0.45rem 0 0', fontSize: '0.9rem', color: '#0f172a', fontWeight: 700 }}>
+            {mesh?.shortAgentId || 'Initializing...'}
+          </p>
+          <p style={{ margin: '0.35rem 0 0', fontSize: '0.82rem', color: '#475569' }}>
+            Storage: {mesh?.storageMode || 'loading'} · Signed events: {mesh?.eventCount ?? 0}
           </p>
         </div>
 

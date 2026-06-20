@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Truck, Loader2, Briefcase, Clock, User } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useMesh } from '../contexts/MeshContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import AppShell from '../components/AppShell';
 import StatusBadge from '../components/StatusBadge';
@@ -76,7 +77,7 @@ const dict = {
 };
 
 // ─── Vehicle Info Tab ─────────────────────────────────────────────────────────
-function VehicleInfoTab({ supabase, user, lang, t }) {
+function VehicleInfoTab({ supabase, user, lang, t, mesh }) {
   const [form, setForm] = useState({ vehicle_type: '', capacity: '', service_area: '' });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -112,6 +113,11 @@ function VehicleInfoTab({ supabase, user, lang, t }) {
     });
     setSaving(false);
     if (dbErr) { setError(dbErr.message); return; }
+    await mesh?.recordTransportProfileUpdated({
+      vehicle_type: form.vehicle_type.trim(),
+      capacity: +form.capacity,
+      service_area: form.service_area.trim(),
+    });
     setSuccess(t.saved);
     setTimeout(() => setSuccess(''), 2000);
   };
@@ -148,7 +154,7 @@ function VehicleInfoTab({ supabase, user, lang, t }) {
 }
 
 // ─── Available Jobs Tab ─────────────────────────────────────────────────────────
-function AvailableJobsTab({ supabase, user, lang, t }) {
+function AvailableJobsTab({ supabase, user, lang, t, mesh }) {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [accepting, setAccepting] = useState(null);
@@ -180,6 +186,14 @@ function AvailableJobsTab({ supabase, user, lang, t }) {
       transporter_id: user.id,
       status: 'transporter_assigned'
     }).eq('id', job.id);
+    await mesh?.recordDeliveryStatusChanged({
+      id: job.id,
+      listing_id: job.listing_id,
+      crop: job.listings?.crop,
+      location: job.listings?.location,
+      status: 'transporter_assigned',
+      transporter_id: user.id,
+    });
     setAccepting(null);
     fetchJobs();
   };
@@ -214,7 +228,7 @@ function AvailableJobsTab({ supabase, user, lang, t }) {
 }
 
 // ─── My Jobs Tab ──────────────────────────────────────────────────────────────
-function MyJobsTab({ supabase, user, lang, t, historyOnly }) {
+function MyJobsTab({ supabase, user, lang, t, historyOnly, mesh }) {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(null);
@@ -250,6 +264,17 @@ function MyJobsTab({ supabase, user, lang, t, historyOnly }) {
   const advance = async (jobId, nextStatus) => {
     setUpdating(jobId);
     await supabase.from('orders').update({ status: nextStatus }).eq('id', jobId);
+    const job = jobs.find((item) => item.id === jobId)
+    if (job) {
+      await mesh?.recordDeliveryStatusChanged({
+        id: job.id,
+        listing_id: job.listing_id,
+        crop: job.listings?.crop,
+        location: job.listings?.location,
+        status: nextStatus,
+        transporter_id: user.id,
+      });
+    }
     setUpdating(null);
     fetchJobs();
   };
@@ -302,6 +327,7 @@ const TAB_ICONS = [User, Briefcase, Truck, Clock];
 
 export default function TransporterApp() {
   const { user, supabase } = useAuth();
+  const mesh = useMesh();
   const { lang } = useLanguage();
   const t = dict[lang];
   const [tab, setTab] = useState('jobs');
@@ -319,10 +345,10 @@ export default function TransporterApp() {
           );
         })}
       </div>
-      {tab === 'vehicle' && <VehicleInfoTab supabase={supabase} user={user} lang={lang} t={t} />}
-      {tab === 'jobs' && <AvailableJobsTab supabase={supabase} user={user} lang={lang} t={t} />}
-      {tab === 'myjobs' && <MyJobsTab supabase={supabase} user={user} lang={lang} t={t} historyOnly={false} />}
-      {tab === 'history' && <MyJobsTab supabase={supabase} user={user} lang={lang} t={t} historyOnly={true} />}
+      {tab === 'vehicle' && <VehicleInfoTab supabase={supabase} user={user} lang={lang} t={t} mesh={mesh} />}
+      {tab === 'jobs' && <AvailableJobsTab supabase={supabase} user={user} lang={lang} t={t} mesh={mesh} />}
+      {tab === 'myjobs' && <MyJobsTab supabase={supabase} user={user} lang={lang} t={t} historyOnly={false} mesh={mesh} />}
+      {tab === 'history' && <MyJobsTab supabase={supabase} user={user} lang={lang} t={t} historyOnly={true} mesh={mesh} />}
     </AppShell>
   );
 }

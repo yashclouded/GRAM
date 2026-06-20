@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Leaf, Loader2, PackagePlus, List, Inbox, Navigation } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useMesh } from '../contexts/MeshContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import AppShell from '../components/AppShell';
 import StatusBadge from '../components/StatusBadge';
@@ -107,7 +108,7 @@ const STEP_KEYS = ['stepAccepted', 'stepTransporter', 'stepPickedUp', 'stepInTra
 
 // ─── Sub-components ────────────────────────────────────────────────────────────
 
-function CreateListingForm({ supabase, user, lang, t, onSuccess }) {
+function CreateListingForm({ supabase, user, lang, t, mesh, onSuccess }) {
   const [form, setForm] = useState({
     crop: '', quantity: '', unit: 'Quintal', grade: 'A', price_per_unit: '', location: '', description: ''
   });
@@ -171,7 +172,7 @@ function CreateListingForm({ supabase, user, lang, t, onSuccess }) {
     if (err) { setError(err); return; }
     if (!window.confirm(lang === 'hi' ? 'क्या आप इस लिस्टिंग को पोस्ट करना चाहते हैं?' : 'Are you sure you want to post this listing?')) return;
     setLoading(true); setError(''); setSuccess('');
-    const { error: dbErr } = await supabase.from('listings').insert({
+    const listingInput = {
       farmer_id: user.id,
       crop: form.crop,
       quantity: +form.quantity,
@@ -180,9 +181,27 @@ function CreateListingForm({ supabase, user, lang, t, onSuccess }) {
       price_per_unit: +form.price_per_unit,
       location: form.location.trim(),
       description: form.description.trim() || null,
-    });
+    };
+    const { data: createdListing, error: dbErr } = await supabase
+      .from('listings')
+      .insert(listingInput)
+      .select('*')
+      .single();
     setLoading(false);
     if (dbErr) { setError(dbErr.message); return; }
+    if (createdListing) {
+      await mesh?.recordListingCreated({
+        id: createdListing.id,
+        crop: createdListing.crop,
+        quantity: createdListing.quantity,
+        unit: createdListing.unit,
+        grade: createdListing.grade,
+        price_per_unit: createdListing.price_per_unit,
+        location: createdListing.location,
+        farmer_id: createdListing.farmer_id,
+        status: createdListing.status || 'available',
+      });
+    }
     setSuccess(t.successCreate);
     setForm({ crop: '', quantity: '', unit: 'Quintal', grade: 'A', price_per_unit: '', location: '', description: '' });
     setImageFile(null);
@@ -308,7 +327,7 @@ function MyListings({ listings, lang, t, loading, onDelete }) {
   );
 }
 
-function OffersTab({ supabase, user, lang, t, onUpdate }) {
+function OffersTab({ supabase, user, lang, t, mesh, onUpdate }) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [actioning, setActioning] = useState(null);
@@ -338,6 +357,18 @@ function OffersTab({ supabase, user, lang, t, onUpdate }) {
   const updateStatus = async (orderId, status) => {
     setActioning(orderId + status);
     await supabase.from('orders').update({ status }).eq('id', orderId);
+    const order = orders.find((item) => item.id === orderId);
+    if (order) {
+      await mesh?.publishEvent(status === 'accepted' ? 'trade.accepted' : 'trade.rejected', {
+        id: order.id,
+        listing_id: order.listing_id,
+        crop: order.listings?.crop,
+        location: order.listings?.location,
+        quantity: order.quantity,
+        agreed_price: order.agreed_price,
+        status,
+      });
+    }
     setActioning(null);
     onUpdate();
     fetchOrders();
@@ -347,6 +378,17 @@ function OffersTab({ supabase, user, lang, t, onUpdate }) {
     if (!newPrice) return;
     setActioning(orderId + 'counter');
     await supabase.from('orders').update({ agreed_price: newPrice }).eq('id', orderId);
+    const order = orders.find((item) => item.id === orderId);
+    if (order) {
+      await mesh?.publishEvent('offer.updated', {
+        id: order.id,
+        listing_id: order.listing_id,
+        crop: order.listings?.crop,
+        location: order.listings?.location,
+        quantity: order.quantity,
+        agreed_price: Number(newPrice),
+      });
+    }
     setActioning(null);
     onUpdate();
     fetchOrders();
@@ -408,7 +450,7 @@ function OffersTab({ supabase, user, lang, t, onUpdate }) {
   );
 }
 
-function TrackingTab({ supabase, user, lang, t }) {
+function TrackingTab({ supabase, user, lang, t, mesh }) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [paying, setPaying] = useState(null);
@@ -437,6 +479,21 @@ function TrackingTab({ supabase, user, lang, t }) {
   const markPayment = async (orderId) => {
     setPaying(orderId);
     await supabase.from('orders').update({ status: 'payment_confirmed' }).eq('id', orderId);
+    const order = orders.find((item) => item.id === orderId);
+    if (order) {
+      await mesh?.recordDeliveryStatusChanged({
+        id: order.id,
+        listing_id: order.listing_id,
+        crop: order.listings?.crop,
+        status: 'payment_confirmed',
+      });
+      await mesh?.publishEvent('trade.completed', {
+        id: order.id,
+        listing_id: order.listing_id,
+        crop: order.listings?.crop,
+        status: 'payment_confirmed',
+      });
+    }
     setPaying(null);
     fetchOrders();
   };
@@ -487,6 +544,7 @@ const TAB_ICONS = [PackagePlus, List, Inbox, Navigation];
 
 export default function FarmerApp() {
   const { user, supabase } = useAuth();
+  const mesh = useMesh();
   const { lang } = useLanguage();
   const t = dict[lang];
   const [tab, setTab] = useState('create');
@@ -506,7 +564,18 @@ export default function FarmerApp() {
 
   const deleteListing = async (id) => {
     if (!window.confirm(lang === 'hi' ? 'क्या आप वाकई इस लिस्टिंग को हटाना चाहते हैं?' : 'Are you sure you want to delete this listing?')) return;
+    const listing = listings.find((item) => item.id === id);
     await supabase.from('listings').delete().eq('id', id);
+    if (listing) {
+      await mesh?.recordListingClosed({
+        id: listing.id,
+        crop: listing.crop,
+        quantity: listing.quantity,
+        unit: listing.unit,
+        location: listing.location,
+        status: 'closed',
+      });
+    }
     fetchListings();
   };
 
@@ -535,16 +604,16 @@ export default function FarmerApp() {
       </div>
 
       {tab === 'create' && (
-        <CreateListingForm supabase={supabase} user={user} lang={lang} t={t} onSuccess={() => { fetchListings(); setTab('listings'); }} />
+        <CreateListingForm supabase={supabase} user={user} lang={lang} t={t} mesh={mesh} onSuccess={() => { fetchListings(); setTab('listings'); }} />
       )}
       {tab === 'listings' && (
         <MyListings listings={listings} lang={lang} t={t} loading={listingsLoading} onDelete={deleteListing} />
       )}
       {tab === 'offers' && (
-        <OffersTab supabase={supabase} user={user} lang={lang} t={t} onUpdate={fetchListings} />
+        <OffersTab supabase={supabase} user={user} lang={lang} t={t} mesh={mesh} onUpdate={fetchListings} />
       )}
       {tab === 'tracking' && (
-        <TrackingTab supabase={supabase} user={user} lang={lang} t={t} />
+        <TrackingTab supabase={supabase} user={user} lang={lang} t={t} mesh={mesh} />
       )}
     </AppShell>
   );
