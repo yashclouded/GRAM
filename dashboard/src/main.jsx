@@ -5,15 +5,18 @@ import './index.css'
 import App from './App.jsx'
 
 import { AuthProvider } from './contexts/AuthContext'
+import { MeshProvider } from './contexts/MeshContext'
 import { LanguageProvider } from './contexts/LanguageContext'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <BrowserRouter>
       <AuthProvider>
-        <LanguageProvider>
-          <App />
-        </LanguageProvider>
+        <MeshProvider>
+          <LanguageProvider>
+            <App />
+          </LanguageProvider>
+        </MeshProvider>
       </AuthProvider>
     </BrowserRouter>
   </StrictMode>,
