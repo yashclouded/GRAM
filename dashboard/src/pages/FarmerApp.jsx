@@ -181,7 +181,7 @@ function CreateListingForm({ supabase, user, lang, t, mesh, onSuccess }) {
       reader.onloadend = async () => {
         const base64Data = reader.result.split(',')[1];
         try {
-          const res = await fetch('http://localhost:8080/api/ai/grade', {
+          const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}/api/ai/grade`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ image: base64Data })

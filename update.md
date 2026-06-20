@@ -2,7 +2,7 @@
 
 This document provides an exhaustive log of the architecture, modules, and product features implemented in the GRAM Protocol ecosystem to date, based exactly on the current codebase state.
 
-The project spans a fully simulated peer-to-peer (P2P) Go backend and a production-ready React (Vite) frontend application that is actively transitioning to a Phase 1 local-first browser mesh, with secure local authentication and same-device gossip already implemented.
+The project spans a fully simulated peer-to-peer (P2P) Go backend and a production-ready React (Vite) frontend application that is actively transitioning to a Phase 1 local-first WebRTC mesh.
 
 ## 1. Backend: Distributed Network & Simulation Engine (`node/`)
 Written in Go, the backend simulates a decentralized network of farmers, buyers, and transporters communicating over a gossip protocol.
@@ -39,7 +39,7 @@ Written in Go, the backend simulates a decentralized network of farmers, buyers,
 The frontend transitioned from an engineer's protocol visualizer to a highly premium, consumer-facing product built in React, Vite, and pure CSS.
 
 * **Premium Glassmorphic Redesign**: Upgraded `LandingPage.jsx` and the user `AppShell.jsx` to feature a highly polished aesthetic. It utilizes dynamic floating headers, translucent frosted glass effects, seamless CSS transitions, and distinct typography.
-* **Authentication & Profiles (`Auth.jsx`, `AuthContext.jsx`, `auth/localAuth.js`, `auth/secureVault.js`)**: The app now supports both Supabase Auth and a **Secure Local** mode. In local mode, accounts are created entirely on-device, stored in IndexedDB, and protected using a PBKDF2-derived AES-GCM vault key. Supabase remains available as an optional legacy bridge when its environment variables are configured.
+* **Authentication & Profiles (`Auth.jsx`, `supabase_schema.sql`)**: Integrated Supabase Auth. A custom PostgreSQL trigger automatically generates user profiles upon signup, tracking their role (`Farmer`, `Buyer`, `Transporter`), location data, and reputation scores via Row Level Security (RLS).
 * **Universal GRAM AI Chat Widget (`ChatWidget.jsx`)**: A floating assistant embedded into the `AppShell` that follows users across tabs. Implements `react-markdown` to format complex AI responses.
 * **Bilingual Farmer UI (`FarmerApp.jsx`)**: A mobile-optimized application built for usability. Features instant photo uploads for AI vision grading, real-time price expectations, deleting active listings (with confirmation), and a reactive status tracker.
 * **Buyer & Transporter UIs (`BuyerApp.jsx`, `TransporterApp.jsx`)**: Fully integrated order placement, vehicle registration, and job acceptance features. All destructive or state-changing actions (bidding, accepting jobs, logging out) are protected by native `window.confirm` pop-ups dynamically translated into English/Hindi.
@@ -54,14 +54,10 @@ We have successfully started implementing the Phase 1 blueprint directly into th
 * **Mesh Identity (`identity/meshIdentity.js`)**: Users generate local cryptographic keypairs (Ed25519 or ECDSA-P256 via WebCrypto API). Every local action is mathematically signed and hashed to derive a unique `agentId`.
 * **Mesh Store (`store/meshStore.js`)**: Supabase relies on network connectivity, so we implemented a local-first Event Store using **IndexedDB**. All state changes (creating listings, bids) are stored locally first via a robust CRDT-like event log. If IndexedDB is blocked, it gracefully degrades to in-memory fallback.
 * **Mesh Context & P2P Gossip (`contexts/MeshContext.jsx`)**: The UI listens to `MeshContext` instead of just an API. When a Farmer creates a listing, it is signed and persisted locally, then gossiped to other open tabs using `BroadcastChannel` (simulating WebRTC peer-to-peer messaging). The Trust Score and Network Health in the sticky footer are now mathematically derived dynamically from these local mesh events.
-* **Secure Local Auth & Encrypted Identity**: When a local account is active, the mesh identity is automatically encrypted and moved out of plaintext storage. The decrypted vault key is kept in memory for the current tab session only, so the dashboard can sign mesh events without exposing the private identity material to the wider app state.
-* **Local-First Market Actions**: Farmer listings and buyer demands now append to the local mesh event log before any backend sync occurs. This gives the app real pending/synced behavior and moves core marketplace flows toward the "device is the node" model instead of treating the backend as the primary ledger.
 
 ## 9. What's Left Before Launch
 To fully execute Phase 1 and exit Phase 0, the following items remain:
 
-1. **Cross-Device Networking:** Replace the `BroadcastChannel` transport, which only works between tabs on the same device, with real WebRTC peer networking such as `js-libp2p` so the IndexedDB mesh can gossip across the internet.
-2. **Broaden Local-First Coverage:** Transporter flows, offer lifecycle changes, notification state, and more trade transitions still need to originate from the local mesh log instead of the backend bridge.
-3. **WASM Consensus Runtime:** The dashboard can gossip and materialize events now, but it still does not execute Snowball consensus, VCG pricing, or Shapley cost splitting locally. The deterministic Go core needs to move into the browser via WebAssembly or an equivalent TypeScript port.
-4. **Encrypt More Local State:** Secure local auth and mesh identity are protected, but the wider event log is not yet encrypted at rest. Sensitive local data needs a stronger at-rest model before claiming end-to-end device safety.
-5. **Deprecate Supabase Completely:** Once cross-device gossip, local recovery/export, and remaining account/profile UX are covered, Supabase can be removed as an auth dependency and the app can rely entirely on browser-held mesh identities.
+1. **WebRTC Networking:** Replace the `BroadcastChannel` (which only works between tabs on the same device) with a true WebRTC transport like `js-libp2p` or `PeerJS` to gossip the IndexedDB `meshStore` payloads across the internet.
+2. **WASM Consensus Runtime:** Currently, the React apps gossip raw proposals but don't compute the Snowball consensus or VCG logic themselves. We need to compile the Go `internal/consensus` and `internal/auction` packages to WebAssembly (`GOOS=js GOARCH=wasm`) and execute them directly inside `MeshContext.jsx`.
+3. **Deprecate Supabase Completley:** Once WebRTC and WASM are integrated, remove Supabase from `Auth.jsx` completely, relying entirely on the `meshIdentity.js` keypairs for persistent identity.

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/yashsingh/agrinerve/node/internal/api"
 	"github.com/yashsingh/agrinerve/node/internal/node"
@@ -31,9 +32,13 @@ func main() {
 	// 3. Start API Server
 	srv := api.NewServer(orch)
 
-	port := ":8080"
-	log.Printf("Server listening on http://localhost%s", port)
-	if err := srv.Start(port); err != nil {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	addr := ":" + port
+	log.Printf("Server listening on %s", addr)
+	if err := srv.Start(addr); err != nil {
 		log.Fatalf("Server failed: %v", err)
 	}
 }

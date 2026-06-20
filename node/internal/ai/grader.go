@@ -2,9 +2,7 @@ package ai
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
-	"strings"
 	"time"
 
 	"github.com/yashsingh/agrinerve/node/internal/events"
@@ -21,8 +19,7 @@ func NewGrader() *Grader {
 	}
 }
 
-// GradeCropImage takes a base64 encoded image and returns a CropGrade.
-// If the AI fails, it gracefully falls back to "Unknown" rather than crashing.
+// GradeCropImage takes a base64 encoded image and returns a CropGrade using Gemini Vision.
 func (g *Grader) GradeCropImage(base64Image string) CropGrade {
 	events.Emit(events.CropImageUploaded, nil)
 
@@ -33,56 +30,21 @@ func (g *Grader) GradeCropImage(base64Image string) CropGrade {
 		Timestamp:  time.Now(),
 	}
 
-	req := ChatCompletionRequest{
-		Model:       "openai/gpt-chat-latest",
-		Temperature: 0.2, // Low temperature for deterministic grading
-	}
-
-	// Vision payload
-	content := []map[string]interface{}{
-		{
-			"type": "text",
-			"text": systemPrompt,
-		},
-		{
-			"type": "image_url",
-			"image_url": map[string]interface{}{
-				"url": fmt.Sprintf("data:image/jpeg;base64,%s", base64Image),
-			},
-		},
-	}
-
-	req.Messages = append(req.Messages, ChatMessage{
-		Role:    "user",
-		Content: content,
-	})
-
-	rawJSON, err := g.Client.CallChatCompletion(req)
-	if err != nil && (strings.Contains(err.Error(), "429") || strings.Contains(err.Error(), "500")) {
-		log.Println("Hack Club AI failed for grading, falling back to Gemini API...")
-		geminiAns, geminiErr := g.Client.CallGeminiFallback(systemPrompt, base64Image)
-		if geminiErr == nil {
-			rawJSON = geminiAns
-			err = nil
-		} else {
-			log.Printf("Gemini fallback grading also failed: %v", geminiErr)
-		}
-	}
-
+	rawJSON, err := g.Client.CallGemini(systemPrompt, base64Image)
 	if err != nil {
+		log.Printf("Gemini grading failed: %v", err)
 		grade.Reasoning = "AI Grading Failed: " + err.Error()
 		events.Emit(events.AIGradingFailed, grade.Reasoning)
 		return grade
 	}
 
-	err = json.Unmarshal([]byte(rawJSON), &grade)
-	if err != nil {
+	if err := json.Unmarshal([]byte(rawJSON), &grade); err != nil {
+		log.Printf("Gemini grading parse failed: %v (raw: %s)", err, rawJSON)
 		grade.Reasoning = "AI Parsing Failed: " + err.Error()
 		events.Emit(events.AIGradingFailed, grade.Reasoning)
 		return grade
 	}
 
-	// Valid Grade!
 	grade.Timestamp = time.Now()
 	events.Emit(events.CropGraded, grade)
 	return grade

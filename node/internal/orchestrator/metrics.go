@@ -177,5 +177,8 @@ func (o *Orchestrator) printTrace(ev events.Event) {
 		return // Don't print spammy events like VoteCast
 	}
 
-	fmt.Printf("[%s] %s\n", timeStr, desc)
+	_ = timeStr
+	_ = desc
+	// Trace logging disabled in production to avoid log rate limits
+
 }

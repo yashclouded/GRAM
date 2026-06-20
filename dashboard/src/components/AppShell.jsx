@@ -19,7 +19,7 @@ export default function AppShell({ icon: Icon, title, children }) {
     // Fetch live reputation from Go backend
     const fetchRep = async () => {
       try {
-        const res = await fetch('http://localhost:8080/api/reputation');
+        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}/api/reputation`);
         const data = await res.json();
         // Match mock node ID based on user role (e.g. farmer -> farmer-0)
         const myNodeId = `${profile?.role || 'farmer'}-0`;
@@ -33,7 +33,7 @@ export default function AppShell({ icon: Icon, title, children }) {
     // Fetch live metrics
     const fetchMetrics = async () => {
       try {
-        const res = await fetch('http://localhost:8080/api/metrics');
+        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}/api/metrics`);
         const data = await res.json();
         if (data?.TotalNodes > 0) {
           setNetworkHealth(Math.floor((data.ActiveNodes / data.TotalNodes) * 100));

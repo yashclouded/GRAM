@@ -1,141 +1,166 @@
 # GRAM: Gossip-Based Resilient Agricultural Mesh
 
-GRAM is a mobile-first coordination app for farmers, buyers, and transporters. The repo is no longer just a Phase 0 demo: it now runs as a hybrid system where the Go backend still simulates the protocol network, while the React app already contains the first local-first Phase 1 pieces needed for a serverless browser mesh.
-
-## Current Status
-
-- **Phase 0 backend is live**: Go still runs Snowball consensus, VCG matching, Shapley cost split, Bayesian trust updates, REST endpoints, and WebSocket streaming.
-- **Phase 1 frontend has started**: the dashboard now supports secure local auth, encrypted browser-held mesh identity, IndexedDB-backed mesh storage, same-device gossip over `BroadcastChannel`, and local-first farmer and buyer flows.
-- **The app is still mixed-mode**: transporter flows, AI chat/grading, network console, and true cross-device networking still depend on backend services or bridge code.
+GRAM is a direct agricultural trading platform that connects farmers, buyers, and transporters without middlemen. This repository contains the Phase 0 demonstration of the marketplace web layer, backed by a simulated peer-to-peer (P2P) Go consensus engine. It is a working, mobile-first web application where participants can sign up and complete decentralized trades end-to-end.
 
 ## Problem Statement
 
-Indian agricultural trade is dominated by brokers and commission agents who control price discovery, delay payments, and extract margins from both farmers and buyers. GRAM is designed to replace that coordination bottleneck with a leaderless mesh where participants act on local knowledge, negotiate directly, and keep trading even when parts of the network go offline.
+Indian agricultural trade is dominated by brokers and commission agents who control price discovery, delay payments, and extract significant margins from both farmers and buyers. Small farmers have no direct access to buyers, no visibility into fair prices, and no way to track their produce after it leaves their hands. GRAM removes the broker by providing farmers, buyers, and transporters a shared coordination layer for direct listings, direct orders, and direct tracking.
 
-## Hybrid Architecture
+## System Architecture
 
 ```mermaid
 graph TD
-    subgraph Dashboard App
-        AUTH[Secure Local Auth or Supabase Auth]
-        MESH[IndexedDB Mesh Store + Signed Events]
-        GOSSIP[BroadcastChannel Gossip]
-        UI[Farmer / Buyer / Transporter Views]
+    subgraph Frontend Application
+        F[Farmer App]
+        B[Buyer App]
+        T[Transporter App]
     end
 
-    subgraph Phase 0 Backend
+    subgraph API Gateway
         REST[REST API]
         WS[WebSocket Stream]
-        CONS[Snowball + VCG + Shapley + Reputation]
-        AI[AI Chat + Crop Grading]
     end
 
-    UI --> AUTH
-    UI --> MESH
-    MESH --> GOSSIP
-    UI --> REST
-    REST --> CONS
-    CONS --> WS
-    UI --> WS
-    UI --> AI
+    subgraph Consensus & Auction Engine
+        M[VCG Matching Engine]
+        S[Snowball Consensus Engine]
+        R[Bayesian Reputation Matrix]
+    end
+
+    subgraph External Oracles
+        AI[Vision AI Grader]
+    end
+
+    F --> REST
+    B --> REST
+    T --> REST
+    
+    REST --> M
+    M --> S
+    S --> R
+    S --> WS
+    WS --> F
+    WS --> B
+    
+    F --> AI
 ```
+
+## Core Protocols and Academic Principles
+
+The GRAM protocol is built upon several foundational algorithms from game theory and distributed systems literature.
+
+### 1. Snowball Consensus Algorithm
+The system uses a leaderless, probabilistic consensus mechanism to validate trades without requiring a centralized authority. When a trade is proposed, nodes sample random quorums of peers to determine the network's preference, continuously shifting state until metastability is broken and consensus is reached.
+* **Reference:** Rocket, T., Yin, M., Sekniqi, K., van Renesse, R., & Sirer, E. G. (2019). *Scalable and Probabilistic Leaderless BFT Consensus through Metastability*.
+
+### 2. Vickrey-Clarke-Groves (VCG) Mechanism
+To ensure truthful bidding and efficient market clearing, the auction engine utilizes VCG pricing. It computes the optimal assignment of buyers to farmers and charges individuals the social harm they cause to others, mathematically ensuring that bidding one's true valuation is the dominant strategy.
+* **References:** 
+  - Vickrey, W. (1961). *Counterspeculation, Auctions, and Competitive Sealed Tenders*.
+  - Clarke, E. H. (1971). *Multipart Pricing of Public Goods*.
+  - Groves, T. (1973). *Incentives in Teams*.
+
+### 3. Shapley Value Cost Allocation
+Transport costs are divided among participants using the Shapley value, ensuring a mathematically fair distribution of logistical expenses based on the marginal contribution of each participant to the route's total efficiency.
+* **Reference:** Shapley, L. S. (1953). *A Value for n-person Games*.
+
+### 4. Bayesian Trust Reputation
+Nodes are assigned a trust score based on their historical behavior (e.g., successful deliveries vs. failed trades). The system utilizes a Beta Reputation framework to continuously update these probabilities, applying a polynomial decay formula to penalize dishonest actors and re-weight their priority in the VCG auction.
+* **Reference:** Josang, A., & Ismail, R. (2002). *The Beta Reputation System*.
 
 ## Tech Stack
 
-| Layer | Technology | Current Role |
+| Layer | Technology | Why |
 |---|---|---|
-| App UI | React 19 + Vite + vanilla CSS | Mobile-first dashboard and role-specific flows |
-| Local-first runtime | Web Crypto + IndexedDB + `BroadcastChannel` | Secure local auth, keypairs, signed event log, same-device gossip |
-| Cloud auth bridge | Supabase Auth | Optional legacy auth path when env vars are present |
-| Backend protocol engine | Go | Phase 0 consensus, auctioning, trust, metrics, AI proxying |
-| AI | Hack Club OpenAI proxy with Gemini fallback | Chat and crop grading |
+| Frontend | React 18 + Vite | Fast iteration; no SSR required for the demonstration |
+| Styling | Vanilla CSS | Maximum control; Capacitor-ready for mobile |
+| Auth | Supabase Auth | Built-in Row Level Security, no separate auth server |
+| Database | Supabase (PostgreSQL) | Managed database with real-time subscriptions |
+| AI | Gemini 1.5 API | Provides vision grading and natural language chat |
+| Backend | Go | High concurrency for the Snowball consensus simulation |
 
-## What Works Today
+## Features
 
-### App
-- Farmer listings can be created locally first, signed, stored in IndexedDB, and materialized back into the UI with sync status.
-- Buyer orders can be created locally first and follow the same mesh event path.
-- Local mesh events gossip across tabs on the same device through `BroadcastChannel`.
-- Trust score and network health in the app shell can be derived from mesh events even when the server is not the source of truth.
+### Farmer Module
+* **Create Listing**: Crop type, quantity, unit, quality grade, expected price, location, description.
+* **AI Vision Grading**: Upload crop images to receive a deterministic quality grade generated by a Vision AI model.
+* **My Listings**: View all listings with live status tracking.
+* **Offers**: Review incoming buyer orders and accept or reject each proposal.
 
-### Auth
-- Users can choose **Secure Local** mode inside the app without Supabase.
-- Local accounts are stored only on-device in IndexedDB.
-- The passphrase is stretched with PBKDF2 and used to encrypt the local vault with AES-GCM.
-- The browser-generated mesh identity is encrypted when local auth is active and the decrypted key never leaves the current tab session.
+### Buyer Module
+* **Browse Listings**: Real-time listing catalog; search by crop name, filter by grade and maximum price.
+* **Place Order**: Submit quantity inputs validated against available agricultural stock.
+* **My Orders**: View order status and confirm delivery when the transporter arrives.
 
-### Backend-backed features
-- AI crop grading and AI chat still call the Go backend.
-- Transporter workflows and several trade lifecycle updates still use server-backed endpoints or sync bridges.
-- Network console, chaos controls, and global metrics are still driven by the simulated backend mesh.
+### Transporter Module
+* **Vehicle Profile**: Register vehicle type, capacity, and service area.
+* **Available Jobs**: Access orders successfully matched between farmers and buyers.
+* **Job Execution**: Process accepted jobs through status checkpoints (Picked Up, In Transit, Delivered).
 
-## Run Locally
+### Shared Capabilities
+* **In-app Notifications**: Real-time WebSocket event streams based on consensus state changes.
+* **Universal AI Assistant**: A conversational AI embedded directly into the application interface to provide real-time agricultural advice.
+* **Language Integration**: Seamless bilingual support (English/Hindi) allowing instant localized text toggling.
+
+## Setup and Installation
 
 ```bash
-# Backend
-cd node
-cp .env.example .env
-go mod tidy
-go run ./cmd/server/main.go
+# 1. Clone the repository
+git clone https://github.com/your-org/agrinerve.git
 
-# Frontend
-cd dashboard
+# 2. Start the Frontend
+cd agrinerve/dashboard
 npm install
 npm run dev
-```
 
-Frontend runs on `http://localhost:5173`. Backend runs on `http://localhost:8080`.
+# 3. Start the Backend Consensus Engine
+cd ../node
+go mod tidy
+go run ./cmd/server
+```
 
 ## Environment Variables
 
-`dashboard/.env`
+Create `dashboard/.env` with the following variables:
+* `VITE_SUPABASE_URL`: Your Supabase project URL
+* `VITE_SUPABASE_ANON_KEY`: Public anon key for Row Level Security authentication
 
-- `VITE_API_URL=http://localhost:8080/api`
-- `VITE_WS_URL=ws://localhost:8080/ws`
-- `VITE_SUPABASE_URL` optional; enables cloud auth mode
-- `VITE_SUPABASE_ANON_KEY` optional; enables cloud auth mode
+Create `node/.env` with the following variables:
+* `HACKCLUB_AI_API_KEY`: Primary key for AI orchestration
+* `GEMINI_API_KEY`: Fallback key for robust AI query routing
 
-If Supabase variables are omitted, the app still works in secure local-auth mode.
+## Folder Structure
 
-`node/.env`
-
-- `HACKCLUB_AI_API_KEY`
-- `GEMINI_API_KEY`
-
-## Repo Map
-
-```text
-dashboard/
-  src/auth/        secure local vault and account lifecycle
-  src/identity/    mesh keypair generation and signatures
-  src/store/       IndexedDB mesh event store
-  src/contexts/    auth and mesh runtime
-  src/pages/       farmer, buyer, transporter, auth, admin, science
-
-node/
-  cmd/server/      API + WebSocket entrypoint
-  internal/
-    consensus/     Snowball engine
-    auction/       VCG matcher and Shapley cost split
-    reputation/    Bayesian trust updates
-    api/           REST + WebSocket handlers
-    ai/            chat and grading adapters
+```
+agrinerve/
+├── dashboard/               # React frontend application
+│   ├── src/                 
+│   │   ├── components/      # Shared User Interface elements
+│   │   ├── contexts/        # Authentication and Localization state
+│   │   ├── pages/           # Application views (Farmer, Buyer, Transporter, Admin)
+│   │   └── index.css        # Global CSS styling
+│   └── supabase_schema.sql  # Database architecture configuration
+│
+├── node/                    # Go consensus and market engine
+│   ├── cmd/                 # Executable entry points
+│   └── internal/            
+│       ├── ai/              # Vision and Chat language models
+│       ├── auction/         # VCG clearing and Shapley routing
+│       ├── consensus/       # Snowball leaderless voting protocol
+│       └── reputation/      # Bayesian trust mathematics
+│
+└── README.md                # Project documentation
 ```
 
-## What Is Not Local Yet
+## Known Limitations
 
-- Cross-device gossip is not live yet; the browser mesh currently uses `BroadcastChannel`, which only works across tabs on the same device.
-- The wider mesh event log is not encrypted at rest yet; only the local auth vault and encrypted mesh identity are protected.
-- Transporter flows, some offer/trade transitions, notifications, and parts of profile management are still not fully local-first.
-- The browser does not run Snowball, VCG, or Shapley yet; those deterministic protocol layers still execute in Go.
+* **Payment Processing**: Payment confirmation is a status flag only; no fiat payment gateways are currently integrated.
+* **Oracle Integration**: External API polling (e.g., Agmarknet) is stubbed to eliminate external network dependencies during offline demonstrations.
+* **Role Isolation**: Accounts are currently limited to a single role per user.
 
 ## Roadmap
 
-- **Phase 1**: replace same-device gossip with real WebRTC peer networking and move the deterministic protocol core into the app.
-- **Phase 2**: remove Supabase auth entirely after recovery/export flows and local-first replacements cover the remaining cloud-backed UX.
-- **Phase 3**: add resilient low-bandwidth access patterns such as SMS/IVR without reintroducing central coordination.
-
-## References
-
-- `docs/PHASE_1_SERVERLESS_TRANSITION.md`: detailed migration plan and remaining work.
-- `update.md`: running implementation log for the current codebase state.
+Future development phases:
+* **Phase 1**: Transition simulated nodes to physical libp2p network deployments.
+* **Phase 2**: Activate the live Oracle layer for Agmarknet mandi prices and satellite crop verification.
+* **Phase 3**: Develop an SMS/IVR fallback architecture for regions with low bandwidth access.
