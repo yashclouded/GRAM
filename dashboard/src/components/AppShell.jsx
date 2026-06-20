@@ -111,7 +111,7 @@ export default function AppShell({ icon: Icon, title, children }) {
         </div>
         {mesh?.agentId && (
           <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }} title={`Phase 1 local node (${mesh.storageMode})`}>
-            Node: {mesh.shortAgentId}
+            Node: {mesh.shortAgentId}{mesh.peerCount ? ` · Peers: ${mesh.peerCount}` : ''}
           </div>
         )}
       </footer>

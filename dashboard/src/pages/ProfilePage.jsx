@@ -111,7 +111,7 @@ export default function ProfilePage() {
             {mesh?.shortAgentId || 'Initializing...'}
           </p>
           <p style={{ margin: '0.35rem 0 0', fontSize: '0.82rem', color: '#475569' }}>
-            Storage: {mesh?.storageMode || 'loading'} · Signed events: {mesh?.eventCount ?? 0}
+            Storage: {mesh?.storageMode || 'loading'} · Signed events: {mesh?.eventCount ?? 0} · Local peers: {mesh?.peerCount ?? 0}
           </p>
         </div>
 
