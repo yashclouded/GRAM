@@ -302,7 +302,7 @@ function materializeMeshState(events, currentUserId, currentAgentId) {
 }
 
 export function MeshProvider({ children }) {
-  const { user, profile } = useAuth()
+  const { user, profile, authMode, hasLocalAccount, loading: authLoading, vaultKey } = useAuth()
   const [identity, setIdentity] = useState(null)
   const [recentEvents, setRecentEvents] = useState([])
   const [eventCount, setEventCount] = useState(0)
@@ -316,9 +316,26 @@ export function MeshProvider({ children }) {
   useEffect(() => {
     let cancelled = false
 
+    if (authLoading) {
+      return () => {
+        cancelled = true
+      }
+    }
+
+    if ((authMode === 'local' || authMode === 'local-locked' || (!authMode && hasLocalAccount)) && !vaultKey) {
+      setIdentity(null)
+      setRecentEvents([])
+      setEventCount(0)
+      setPeerSessions({})
+      setReady(false)
+      return () => {
+        cancelled = true
+      }
+    }
+
     async function bootstrap() {
       const [loadedIdentity, events, totalEvents, mode, fingerprint] = await Promise.all([
-        loadOrCreateMeshIdentity(),
+        loadOrCreateMeshIdentity(vaultKey || null),
         listRecentEvents(EVENT_WINDOW),
         countEvents(),
         getStorageMode(),
@@ -340,7 +357,7 @@ export function MeshProvider({ children }) {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [authLoading, authMode, hasLocalAccount, vaultKey])
 
   async function persistEvent(event) {
     await addEvent(event)

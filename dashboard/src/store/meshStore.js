@@ -128,6 +128,24 @@ export async function setKV(key, value) {
   }
 }
 
+export async function deleteKV(key) {
+  if (storageMode === 'memory') {
+    memoryKV.delete(key)
+    return
+  }
+
+  try {
+    await withStore(KV_STORE, 'readwrite', (store, resolve, reject) => {
+      const request = store.delete(key)
+      request.onsuccess = () => resolve(undefined)
+      request.onerror = () => reject(request.error)
+    })
+  } catch {
+    useMemoryFallback()
+    memoryKV.delete(key)
+  }
+}
+
 export async function addEvent(event) {
   const saved = clone(event)
 

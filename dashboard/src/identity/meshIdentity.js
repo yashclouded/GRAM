@@ -1,6 +1,8 @@
-import { getKV, setKV } from '../store/meshStore'
+import { decryptJsonWithKey, encryptJsonWithKey } from '../auth/secureVault'
+import { deleteKV, getKV, setKV } from '../store/meshStore'
 
 const IDENTITY_KEY = 'mesh.identity.v1'
+const SECURE_IDENTITY_KEY = 'mesh.identity.secure.v1'
 
 const encoder = new TextEncoder()
 
@@ -89,15 +91,41 @@ async function importPrivateKey(identity) {
   return crypto.subtle.importKey('jwk', identity.privateJwk, algorithm, false, ['sign'])
 }
 
-export async function loadOrCreateMeshIdentity() {
-  const existing = await getKV(IDENTITY_KEY)
-  if (existing?.agentId && existing?.privateJwk && existing?.publicJwk) {
-    return existing
+export async function loadOrCreateMeshIdentity(vaultKey = null) {
+  if (vaultKey) {
+    const encryptedIdentity = await getKV(SECURE_IDENTITY_KEY)
+    if (encryptedIdentity?.encrypted) {
+      return decryptJsonWithKey(encryptedIdentity.encrypted, vaultKey)
+    }
+
+    const plainIdentity = await getKV(IDENTITY_KEY)
+    if (plainIdentity?.agentId && plainIdentity?.privateJwk && plainIdentity?.publicJwk) {
+      await setKV(SECURE_IDENTITY_KEY, {
+        version: 1,
+        encrypted: await encryptJsonWithKey(plainIdentity, vaultKey),
+      })
+      await deleteKV(IDENTITY_KEY)
+      return plainIdentity
+    }
+  } else {
+    const existing = await getKV(IDENTITY_KEY)
+    if (existing?.agentId && existing?.privateJwk && existing?.publicJwk) {
+      return existing
+    }
   }
 
   const { keyPair, algorithm } = await generateKeyPair()
   const identity = await exportIdentity(keyPair, algorithm)
-  await setKV(IDENTITY_KEY, identity)
+
+  if (vaultKey) {
+    await setKV(SECURE_IDENTITY_KEY, {
+      version: 1,
+      encrypted: await encryptJsonWithKey(identity, vaultKey),
+    })
+  } else {
+    await setKV(IDENTITY_KEY, identity)
+  }
+
   return identity
 }
 
