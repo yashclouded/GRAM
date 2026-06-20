@@ -1,188 +1,151 @@
-# GRAM Protocol: Gossip-based Resilient Agricultural Mesh
+# GRAM — Direct Agricultural Marketplace (Phase 0 Demo)
 
-GRAM is a leaderless, decentralized coordination protocol designed for agricultural trade. It enables Farmers, Buyers, and Transporters to negotiate, match, and finalize trades without relying on a central server. 
+GRAM is a direct agricultural trading platform that connects farmers, buyers, and transporters without middlemen. This repository is the **Phase 0 hackathon demo** — the marketplace website layer. It is *not* the full decentralized protocol (that's a later phase); think of this as the front door of GRAM: a working, mobile-first web app where real people can sign up and complete trades end-to-end.
 
-Built as a robust, resilient distributed system, GRAM can tolerate massive network failures (up to 40% of nodes suddenly dropping offline) and gracefully degrade during API failures, guaranteeing that local agriculture markets never completely halt due to central point-of-failure outages.
+---
 
-## 🚀 Running the Project
+## Problem Statement
 
-The application is split into a Go backend and a React/Vite frontend. Both must be running simultaneously.
+Indian agricultural trade is dominated by brokers and commission agents who control price discovery, delay payments, and extract 10–30% margins from both farmers and buyers. Small farmers have no direct access to buyers, no visibility into fair prices, and no way to track their produce after it leaves their hands.
 
-### 1. Start the Backend API & WebSocket Server
+GRAM removes the broker by giving farmers, buyers, and transporters a shared coordination layer — direct listings, direct orders, direct tracking.
+
+---
+
+## Tech Stack
+
+| Layer | Technology | Why |
+|---|---|---|
+| Frontend | React 18 + Vite | Fast iteration; no SSR needed for demo |
+| Styling | Vanilla CSS (mobile-first) | Maximum control; Capacitor-ready |
+| Auth | Supabase Auth (email/password) | Built-in RLS, no separate auth server |
+| Database | Supabase (PostgreSQL) | Managed Postgres with real-time subscriptions |
+| i18n | Inline bilingual dicts (EN/HI) | Zero-dependency, instant switch, easy to extract to files |
+| Deployment | Vercel-compatible static export | `vite build` → `dist/` → drop on Vercel |
+
+> Note: The build prompt specified Prisma + SQLite, but Supabase was explicitly chosen for this project because the Supabase project was already provisioned and Supabase Auth + RLS eliminates the need for a separate backend service entirely.
+
+---
+
+## Features
+
+### 🌾 Farmer
+- **Create Listing**: crop type (10 crops), quantity + unit, quality grade (A/B/C), expected price, location, description
+- **My Listings**: all listings with live status badges (Available / Offer Received / Sold / In Transit / Delivered)
+- **Offers**: incoming buyer orders — Accept or Reject each one
+- **Tracking**: accepted orders with a step-by-step timeline; "Mark Payment Received" button once the buyer confirms delivery
+
+### 🛒 Buyer
+- **Browse Listings**: real-time list from Supabase; search by crop name, filter by grade and max price
+- **Place Order**: modal with quantity input, validated against available stock
+- **My Orders**: all orders with status badges; "Confirm Delivery" button when transporter marks delivered
+
+### 🚚 Transporter
+- **My Vehicle Info**: vehicle type dropdown, capacity, service area — persisted to `transporter_profiles`
+- **Available Jobs**: orders matched between farmer and buyer, not yet assigned to a transporter
+- **My Jobs**: accepted jobs with status buttons: Mark Picked Up → Mark In Transit → Mark Delivered
+- **Job History**: all completed deliveries
+
+### 🔔 Shared (all roles)
+- **In-app Notifications**: real-time bell with unread count; messages auto-created by Supabase triggers on order status changes — bilingual (EN/HI)
+- **Profile/Settings**: edit name, phone, village, district, state; language selector; logout
+- **Language Toggle**: visible in every screen header; switches all text instantly without a reload
+
+---
+
+## Setup & Installation
+
 ```bash
-cd node
-# If you haven't yet:
-# go mod tidy
-go run cmd/server/main.go
-```
-*The API will start on `http://localhost:8080`.*
+# 1. Clone
+git clone https://github.com/your-org/agrinerve.git
+cd agrinerve/dashboard
 
-### 2. Start the Frontend Dashboard
-Open a new terminal window:
-```bash
-cd dashboard
-# If you haven't yet:
-# npm install
+# 2. Install dependencies
+npm install
+
+# 3. Configure environment (copy and fill in)
+cp .env.example .env
+# Edit .env — see "Environment Variables" section below
+
+# 4. Set up Supabase schema
+# - Go to your Supabase project → SQL Editor
+# - Paste the contents of supabase_schema.sql and run it
+# - This creates: listings, orders, transporter_profiles, notifications tables + RLS + triggers
+
+# 5. Start dev server
 npm run dev
-```
-*The dashboard will start on `http://localhost:5173`. Open this URL in your browser.*
-
-### 3. Running the Demo
-Once the dashboard is open:
-- Click **"Run Full Demo Trace"** in the top right to simulate a complete cycle: AI grading -> listing -> matching -> consensus -> settlement.
-- Use the **Market Entry** panel to inject manual listings and demands.
-- Use the **Chaos Controls** to drop offline nodes and watch the network re-converge.
-
----
-
-## Use Case & Product Overview
-
-In traditional agricultural markets, farmers depend on centralized mandi systems, isolated transport logistics, and opaque pricing engines. This creates systemic fragility: if a central coordination server fails, or if a local authority goes offline, trade grinds to a halt.
-
-**GRAM solves this by decentralizing the market.** 
-- **Farmers** list crops with minimum expected prices and AI-graded quality scores.
-- **Buyers** submit demands with maximum purchasing limits.
-- **Transporters** offer logistics capacity.
-
-GRAM's decentralized nodes calculate combinatorial matches and utilize a probabilistic gossip protocol to finalize trades, ensuring the agricultural economy remains active even in degraded internet or infrastructural conditions.
-
----
-
-## Core Architecture & Network Flow
-
-GRAM separates the deterministic market economics from the probabilistic network consensus.
-
-```mermaid
-graph TD
-    subgraph GRAM Application Layer
-        M[Market Engine / Auction]
-        
-        L[Farmer Listings] --> M
-        D[Buyer Demands] --> M
-        O[Transport Offers] --> M
-    end
-
-    subgraph Simulation Control Layer
-        M -.->|Proposes Candidate Trades| Orch[Orchestrator]
-        CE[Chaos Engine] -.-> Orch
-    end
-
-    subgraph Decentralized Network
-        Orch --> N1[Node 1]
-        Orch --> N2[Node 2]
-        N1 <--> N2
-        N1 <--> N3
-        N2 <--> N3
-    end
+# → opens at http://localhost:5173
 ```
 
 ---
 
-## 1. Decentralized Snowball Consensus
+## Environment Variables
 
-GRAM does not have a "leader" or "master" node. Instead, it utilizes a custom implementation of **Snowball Consensus** (inspired by Avalanche). Nodes continuously sample a random subset of peers to vote on trade proposals. The network rapidly converges on a decision, achieving agreement even when nodes are dishonest or offline.
+Create `dashboard/.env` with:
 
-```mermaid
-sequenceDiagram
-    participant Proposer
-    participant Network Nodes
-    
-    Proposer->>Network Nodes: Broadcast Trade Proposal
-    loop Every Round (Consensus Loop)
-        Network Nodes->>Network Nodes: Gossip (Query K random peers)
-        Network Nodes-->>Network Nodes: Update Confidence Counters
-    end
-    Note over Network Nodes: Threshold Reached
-    Network Nodes->>Proposer: Finalize Trade (Accepted/Rejected)
+```
+VITE_SUPABASE_URL=https://your-project-ref.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key-here
+```
+
+| Variable | Description |
+|---|---|
+| `VITE_SUPABASE_URL` | Your Supabase project URL (found in Project Settings → API) |
+| `VITE_SUPABASE_ANON_KEY` | Public anon key — safe to expose to the browser; RLS enforces data access |
+
+---
+
+## Folder Structure
+
+```
+agrinerve/
+├── dashboard/               # Vite + React marketplace app (this README)
+│   ├── src/
+│   │   ├── components/      # Shared UI: AppShell, NotificationBell, StatusBadge, EmptyState
+│   │   ├── contexts/        # AuthContext (Supabase auth + profile), LanguageContext
+│   │   ├── pages/           # One file per screen: Auth, LandingPage, Onboarding,
+│   │   │                    #   FarmerApp, BuyerApp, TransporterApp, ProfilePage
+│   │   ├── index.css        # Global mobile-first styles
+│   │   └── App.jsx          # Route definitions
+│   ├── supabase_schema.sql  # Full DB schema to run in Supabase SQL Editor
+│   └── .env.example         # Environment variable template
+│
+├── node/                    # Go backend — GRAM consensus/mesh (separate system)
+├── docs/                    # Design doc, architecture notes
+└── README.md                # This file
 ```
 
 ---
 
-## 2. Combinatorial Trade Matching Engine
+## Adding a New Language
 
-GRAM features an integrated matching engine that resolves supply, demand, and logistics simultaneously. The deterministic engine pairs these efficiently in an $O(F \times B \times T)$ combinatorial cycle and immediately submits candidate trades to the network for decentralized approval.
+1. Open each page file (e.g. `FarmerApp.jsx`) — each has a `const dict = { en: {...}, hi: {...} }` at the top.
+2. Add a new key, e.g. `mr: { ... }` with Marathi translations for every string.
+3. In `LanguageContext.jsx`, update the default state if desired.
+4. In any language toggle button, add a third option: `{lang === 'en' ? '...' : lang === 'hi' ? '...' : 'English'}`.
+5. In `NotificationBell.jsx`, add `message_mr` column support (or reuse `message_hi` as fallback until the Supabase schema is extended).
 
-```mermaid
-flowchart TD
-    Start[Run Market Cycle] --> Generate[Generate All F x B x T Combinations]
-    Generate --> Filter[Filter Invalid Constraints]
-    
-    Filter -- Quantity Mismatch --> Drop[Discard]
-    Filter -- Price Economics Fail --> Drop
-    
-    Filter -- Valid Matches --> Score[Score Remaining Matches]
-    Score --> Sort[Sort by Highest Margin & Quantity Fit]
-    Sort --> Select[Greedy Selection]
-    Select --> Propose[Submit to Snowball Consensus]
-```
+> When the string count grows, extract dicts to `src/locales/en.json`, `src/locales/hi.json`, etc. and load them via a simple `useTranslation()` hook. The inline dict pattern is intentionally extractable.
 
 ---
 
-## 3. AI Crop Quality Grading 
+## Known Limitations / What's Mocked
 
-Before a crop enters the market, farmers submit a photo for automated grading using the Hack Club AI Vision proxy. The system evaluates visual quality, contamination, discoloration, and visible damage. 
-
-If the AI fails, the node gracefully degrades to an "Unknown" grade and the market cycle continues unblocked, guaranteeing protocol resilience.
-
-```mermaid
-sequenceDiagram
-    participant Farmer
-    participant Grader as AI Subsystem
-    participant AI as Hack Club AI Vision
-    participant Market
-
-    Farmer->>Grader: Upload Crop Image (Base64)
-    Grader->>AI: Call Vision API (Strict JSON Prompt)
-    
-    alt Successful Grading
-        AI-->>Grader: {"grade":"A", "confidence":95, "reasoning":"Looks great."}
-        Grader-->>Farmer: CropGrade (Attached to Listing)
-    else API Timeout / Missing Key
-        AI--xGrader: Error
-        Grader-->>Farmer: Grade="Unknown" (Graceful Degradation)
-    end
-
-    Farmer->>Market: Publish Listing to Decentralized Market
-```
+- **No real payments** — "Mark Payment Received" is a status flag only; no payment gateway
+- **No real AgriStack / ONDC / Beckn integration** — listings are stored in Supabase, not on any government API
+- **No Agmarknet live prices** — The Go backend has an oracle adapter (`node/internal/oracle/`) but the marketplace frontend does not call it in this build (removed to eliminate backend dependency for standalone demo)
+- **No real-time push / SMS / IVR** — notifications are in-app only via Supabase realtime
+- **Single role per user** — one user account = one role; no multi-role support in this version
+- **No offline mode** — requires internet connection to Supabase
+- **No admin panel or dispute resolution UI**
 
 ---
 
-## Trade Lifecycle
+## Roadmap
 
-The following state diagram illustrates the journey of an agricultural asset from intent to finalized trade.
+Future phases beyond this marketplace layer:
+- **Phase 1 — Decentralized Mesh**: leaderless Snowball consensus over libp2p, gossip-based listing propagation, no single server required
+- **Phase 2 — Oracle Layer**: live Agmarknet mandi price integration, satellite-based crop verification, AI quality grading (Go backend already has stubs for all three)
+- **Phase 3 — Offline Resilience**: SMS/IVR fallback for feature-phone users, local-first sync when internet is intermittent
 
-```mermaid
-stateDiagram-v2
-    [*] --> IntentSubmitted : Farmer, Buyer, Transporter
-    IntentSubmitted --> CandidateMatch : Market Cycle Runs
-    CandidateMatch --> ConsensusPending : Submitted to Network
-    
-    state ConsensusPending {
-        Voting
-        Gossip
-        ConfidenceBuilding
-    }
-
-    ConsensusPending --> TradeAccepted : Network Converges (Yes)
-    ConsensusPending --> TradeRejected : Network Converges (No)
-    TradeAccepted --> [*]
-    TradeRejected --> IntentSubmitted : Re-queue
-```
-
----
-
-## Project Structure
-
-```text
-/node
-├── cmd/
-│   └── demo/main.go           # The main simulation execution
-├── internal/
-│   ├── ai/                    # AI Vision proxy and rigid JSON prompts
-│   ├── auction/               # Deterministic matching engine and market cycle
-│   ├── consensus/             # Snowball consensus algorithms and trade proposals
-│   ├── events/                # Internal event bus for metrics and tracing
-│   ├── network/               # P2P Gossip simulator and message routing
-│   ├── node/                  # Base node definitions for Farmers, Buyers, Transporters
-│   └── orchestrator/          # Chaos engine and network health metric calculation
-```
+This is the front door of GRAM, not the whole building.
