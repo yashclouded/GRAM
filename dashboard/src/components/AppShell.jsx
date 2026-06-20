@@ -1,40 +1,46 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useMesh } from '../contexts/MeshContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import NotificationBell from './NotificationBell';
 import { LogOut, Settings, Activity, ShieldCheck } from 'lucide-react';
 import ChatWidget from './ChatWidget';
 
 export default function AppShell({ icon: Icon, title, children }) {
-  const { supabase, profile } = useAuth();
+  const { profile, signOut } = useAuth();
+  const mesh = useMesh();
   const { lang, setLang } = useLanguage();
   const navigate = useNavigate();
-  const [trustScore, setTrustScore] = useState(50.0);
-  const [networkHealth, setNetworkHealth] = useState(100);
+  const [trustScore, setTrustScore] = useState(mesh?.trustScore ?? 50.0);
+  const [networkHealth, setNetworkHealth] = useState(mesh?.networkHealth ?? 100);
 
   useEffect(() => {
     // Fetch live reputation from Go backend
     const fetchRep = async () => {
       try {
-        const res = await fetch('http://localhost:8080/api/reputation');
+        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}/api/reputation`);
         const data = await res.json();
         // Match mock node ID based on user role (e.g. farmer -> farmer-0)
         const myNodeId = `${profile?.role || 'farmer'}-0`;
         const myRep = data?.find(r => r.NodeID === myNodeId);
         if (myRep) setTrustScore(myRep.Score);
-      } catch (err) {}
+      } catch (err) {
+        setTrustScore(mesh?.trustScore ?? 50);
+      }
     };
     
     // Fetch live metrics
     const fetchMetrics = async () => {
       try {
-        const res = await fetch('http://localhost:8080/api/metrics');
+        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}/api/metrics`);
         const data = await res.json();
         if (data?.TotalNodes > 0) {
           setNetworkHealth(Math.floor((data.ActiveNodes / data.TotalNodes) * 100));
         }
-      } catch (err) {}
+      } catch (err) {
+        setNetworkHealth(mesh?.networkHealth ?? 100);
+      }
     };
 
     fetchRep();
@@ -44,7 +50,14 @@ export default function AppShell({ icon: Icon, title, children }) {
       fetchMetrics();
     }, 5000);
     return () => clearInterval(interval);
-  }, [profile?.role]);
+  }, [mesh?.networkHealth, mesh?.trustScore, profile?.role]);
+
+  useEffect(() => {
+    if (mesh?.ready) {
+      setTrustScore((current) => current === 50 ? mesh.trustScore : current);
+      setNetworkHealth((current) => current === 100 ? mesh.networkHealth : current);
+    }
+  }, [mesh?.networkHealth, mesh?.ready, mesh?.trustScore]);
 
   return (
     <div className="farmer-app">
@@ -76,7 +89,7 @@ export default function AppShell({ icon: Icon, title, children }) {
             id="logout-btn"
             onClick={() => {
               if (window.confirm(lang === 'hi' ? 'क्या आप वाकई लॉगआउट करना चाहते हैं?' : 'Are you sure you want to logout?')) {
-                supabase.auth.signOut();
+                signOut();
               }
             }}
             style={{ background: 'none', border: 'none', padding: '0.25rem', cursor: 'pointer' }}
@@ -96,6 +109,11 @@ export default function AppShell({ icon: Icon, title, children }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.85rem', color: networkHealth > 50 ? '#16a34a' : '#ea580c', fontWeight: '700' }} title="GRAM Protocol Health">
           <Activity size={16} /> Net: {networkHealth}%
         </div>
+        {mesh?.agentId && (
+          <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }} title={`Phase 1 local node (${mesh.storageMode})`}>
+            Node: {mesh.shortAgentId}{mesh.peerCount ? ` · Peers: ${mesh.peerCount}` : ''}
+          </div>
+        )}
       </footer>
       <ChatWidget />
     </div>

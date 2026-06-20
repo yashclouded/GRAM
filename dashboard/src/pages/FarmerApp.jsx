@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Leaf, Loader2, PackagePlus, List, Inbox, Navigation } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useMesh } from '../contexts/MeshContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import AppShell from '../components/AppShell';
 import StatusBadge from '../components/StatusBadge';
@@ -26,6 +27,8 @@ const dict = {
     submit: 'List for Sale',
     submitting: 'Listing...',
     successCreate: 'Listing created successfully!',
+    localSaved: 'Saved on this device. It will sync when the bridge is available.',
+    pendingSync: 'Pending sync',
     // Validations
     errCrop: 'Please select a crop.',
     errQty: 'Enter a valid quantity.',
@@ -74,6 +77,8 @@ const dict = {
     submit: 'बिक्री के लिए सूचीबद्ध करें',
     submitting: 'सूचीबद्ध हो रहा है...',
     successCreate: 'लिस्टिंग सफलतापूर्वक बनाई गई!',
+    localSaved: 'यह इस डिवाइस पर सहेजा गया है। ब्रिज उपलब्ध होने पर यह सिंक हो जाएगा।',
+    pendingSync: 'सिंक लंबित',
     errCrop: 'कृपया एक फसल चुनें।',
     errQty: 'एक वैध मात्रा दर्ज करें।',
     errPrice: 'एक वैध कीमत दर्ज करें।',
@@ -105,9 +110,50 @@ const dict = {
 const TRACKING_STEPS = ['accepted', 'transporter_assigned', 'picked_up', 'in_transit', 'delivered', 'payment_confirmed'];
 const STEP_KEYS = ['stepAccepted', 'stepTransporter', 'stepPickedUp', 'stepInTransit', 'stepDelivered', 'stepPayment'];
 
+function mergeFarmerListings(remoteListings, meshListings) {
+  const merged = new Map()
+
+  remoteListings.forEach((listing) => {
+    merged.set(String(listing.id), {
+      ...listing,
+      sync_state: 'synced',
+    })
+  })
+
+  meshListings.forEach((listing) => {
+    const remoteKey = listing.server_id ? String(listing.server_id) : null
+    if (remoteKey && merged.has(remoteKey)) {
+      merged.set(remoteKey, {
+        ...merged.get(remoteKey),
+        sync_state: listing.sync_state || 'synced',
+        local_id: listing.local_id || null,
+      })
+      return
+    }
+
+    const key = String(listing.local_id || listing.id || listing.server_id)
+    merged.set(key, {
+      id: listing.local_id || listing.id || key,
+      crop: listing.crop,
+      quantity: listing.quantity,
+      unit: listing.unit,
+      grade: listing.grade,
+      price_per_unit: listing.price_per_unit,
+      location: listing.location,
+      description: listing.description || null,
+      status: listing.status || 'available',
+      created_at: listing.created_at,
+      sync_state: listing.sync_state || 'pending',
+      local_only: true,
+    })
+  })
+
+  return [...merged.values()].sort((left, right) => (right.created_at || '').localeCompare(left.created_at || ''))
+}
+
 // ─── Sub-components ────────────────────────────────────────────────────────────
 
-function CreateListingForm({ supabase, user, lang, t, onSuccess }) {
+function CreateListingForm({ supabase, user, lang, t, mesh, onSuccess }) {
   const [form, setForm] = useState({
     crop: '', quantity: '', unit: 'Quintal', grade: 'A', price_per_unit: '', location: '', description: ''
   });
@@ -135,7 +181,7 @@ function CreateListingForm({ supabase, user, lang, t, onSuccess }) {
       reader.onloadend = async () => {
         const base64Data = reader.result.split(',')[1];
         try {
-          const res = await fetch('http://localhost:8080/api/ai/grade', {
+          const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}/api/ai/grade`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ image: base64Data })
@@ -171,7 +217,8 @@ function CreateListingForm({ supabase, user, lang, t, onSuccess }) {
     if (err) { setError(err); return; }
     if (!window.confirm(lang === 'hi' ? 'क्या आप इस लिस्टिंग को पोस्ट करना चाहते हैं?' : 'Are you sure you want to post this listing?')) return;
     setLoading(true); setError(''); setSuccess('');
-    const { error: dbErr } = await supabase.from('listings').insert({
+    const clientId = crypto.randomUUID();
+    const listingInput = {
       farmer_id: user.id,
       crop: form.crop,
       quantity: +form.quantity,
@@ -180,9 +227,31 @@ function CreateListingForm({ supabase, user, lang, t, onSuccess }) {
       price_per_unit: +form.price_per_unit,
       location: form.location.trim(),
       description: form.description.trim() || null,
+    };
+    await mesh?.recordListingCreated({
+      client_id: clientId,
+      ...listingInput,
+      status: 'available',
+      sync_state: 'pending',
     });
+
+    const { data: createdListing, error: dbErr } = await supabase
+      .from('listings')
+      .insert(listingInput)
+      .select('*')
+      .single();
     setLoading(false);
-    if (dbErr) { setError(dbErr.message); return; }
+    if (dbErr) {
+      setSuccess(t.localSaved);
+      setForm({ crop: '', quantity: '', unit: 'Quintal', grade: 'A', price_per_unit: '', location: '', description: '' });
+      setImageFile(null);
+      setAiFeedback(null);
+      setTimeout(() => { setSuccess(''); onSuccess(); }, 1200);
+      return;
+    }
+    if (createdListing) {
+      await mesh?.recordListingSynced(clientId, createdListing);
+    }
     setSuccess(t.successCreate);
     setForm({ crop: '', quantity: '', unit: 'Quintal', grade: 'A', price_per_unit: '', location: '', description: '' });
     setImageFile(null);
@@ -285,7 +354,7 @@ function MyListings({ listings, lang, t, loading, onDelete }) {
             </div>
             <div>
               <StatusBadge status={l.status} lang={lang} />
-              {l.status === 'listed' && (
+              {['listed', 'available'].includes(l.status) && (
                 <button 
                   onClick={() => onDelete(l.id)}
                   style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0 0.5rem', marginTop: '0.25rem', fontSize: '0.85rem' }}
@@ -302,13 +371,18 @@ function MyListings({ listings, lang, t, loading, onDelete }) {
           <p style={{ fontSize: '0.75rem', color: '#aaa', marginTop: '0.5rem' }}>
             {new Date(l.created_at).toLocaleDateString(lang === 'hi' ? 'hi-IN' : 'en-IN')}
           </p>
+          {l.sync_state && l.sync_state !== 'synced' && (
+            <p style={{ fontSize: '0.76rem', color: '#d97706', marginTop: '0.35rem', fontWeight: 700 }}>
+              {t.pendingSync}
+            </p>
+          )}
         </div>
       ))}
     </div>
   );
 }
 
-function OffersTab({ supabase, user, lang, t, onUpdate }) {
+function OffersTab({ supabase, user, lang, t, mesh, onUpdate }) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [actioning, setActioning] = useState(null);
@@ -338,6 +412,18 @@ function OffersTab({ supabase, user, lang, t, onUpdate }) {
   const updateStatus = async (orderId, status) => {
     setActioning(orderId + status);
     await supabase.from('orders').update({ status }).eq('id', orderId);
+    const order = orders.find((item) => item.id === orderId);
+    if (order) {
+      await mesh?.publishEvent(status === 'accepted' ? 'trade.accepted' : 'trade.rejected', {
+        id: order.id,
+        listing_id: order.listing_id,
+        crop: order.listings?.crop,
+        location: order.listings?.location,
+        quantity: order.quantity,
+        agreed_price: order.agreed_price,
+        status,
+      });
+    }
     setActioning(null);
     onUpdate();
     fetchOrders();
@@ -347,6 +433,17 @@ function OffersTab({ supabase, user, lang, t, onUpdate }) {
     if (!newPrice) return;
     setActioning(orderId + 'counter');
     await supabase.from('orders').update({ agreed_price: newPrice }).eq('id', orderId);
+    const order = orders.find((item) => item.id === orderId);
+    if (order) {
+      await mesh?.publishEvent('offer.updated', {
+        id: order.id,
+        listing_id: order.listing_id,
+        crop: order.listings?.crop,
+        location: order.listings?.location,
+        quantity: order.quantity,
+        agreed_price: Number(newPrice),
+      });
+    }
     setActioning(null);
     onUpdate();
     fetchOrders();
@@ -408,7 +505,7 @@ function OffersTab({ supabase, user, lang, t, onUpdate }) {
   );
 }
 
-function TrackingTab({ supabase, user, lang, t }) {
+function TrackingTab({ supabase, user, lang, t, mesh }) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [paying, setPaying] = useState(null);
@@ -437,6 +534,21 @@ function TrackingTab({ supabase, user, lang, t }) {
   const markPayment = async (orderId) => {
     setPaying(orderId);
     await supabase.from('orders').update({ status: 'payment_confirmed' }).eq('id', orderId);
+    const order = orders.find((item) => item.id === orderId);
+    if (order) {
+      await mesh?.recordDeliveryStatusChanged({
+        id: order.id,
+        listing_id: order.listing_id,
+        crop: order.listings?.crop,
+        status: 'payment_confirmed',
+      });
+      await mesh?.publishEvent('trade.completed', {
+        id: order.id,
+        listing_id: order.listing_id,
+        crop: order.listings?.crop,
+        status: 'payment_confirmed',
+      });
+    }
     setPaying(null);
     fetchOrders();
   };
@@ -487,11 +599,13 @@ const TAB_ICONS = [PackagePlus, List, Inbox, Navigation];
 
 export default function FarmerApp() {
   const { user, supabase } = useAuth();
+  const mesh = useMesh();
   const { lang } = useLanguage();
   const t = dict[lang];
   const [tab, setTab] = useState('create');
   const [listings, setListings] = useState([]);
   const [listingsLoading, setListingsLoading] = useState(true);
+  const mergedListings = useMemo(() => mergeFarmerListings(listings, mesh?.myListings || []), [listings, mesh?.myListings]);
 
   const fetchListings = async () => {
     setListingsLoading(true);
@@ -506,7 +620,34 @@ export default function FarmerApp() {
 
   const deleteListing = async (id) => {
     if (!window.confirm(lang === 'hi' ? 'क्या आप वाकई इस लिस्टिंग को हटाना चाहते हैं?' : 'Are you sure you want to delete this listing?')) return;
-    await supabase.from('listings').delete().eq('id', id);
+    const listing = mergedListings.find((item) => String(item.id) === String(id));
+    if (listing?.local_only || !listing?.server_id) {
+      await mesh?.recordListingClosed({
+        client_id: listing.local_id || listing.id,
+        crop: listing.crop,
+        quantity: listing.quantity,
+        unit: listing.unit,
+        location: listing.location,
+        status: 'closed',
+        sync_state: 'pending',
+      });
+      fetchListings();
+      return;
+    }
+
+    await supabase.from('listings').delete().eq('id', listing.server_id || id);
+    if (listing) {
+      await mesh?.recordListingClosed({
+        id: listing.server_id || listing.id,
+        client_id: listing.local_id || null,
+        crop: listing.crop,
+        quantity: listing.quantity,
+        unit: listing.unit,
+        location: listing.location,
+        status: 'closed',
+        sync_state: 'synced',
+      });
+    }
     fetchListings();
   };
 
@@ -535,16 +676,16 @@ export default function FarmerApp() {
       </div>
 
       {tab === 'create' && (
-        <CreateListingForm supabase={supabase} user={user} lang={lang} t={t} onSuccess={() => { fetchListings(); setTab('listings'); }} />
+        <CreateListingForm supabase={supabase} user={user} lang={lang} t={t} mesh={mesh} onSuccess={() => { fetchListings(); setTab('listings'); }} />
       )}
       {tab === 'listings' && (
-        <MyListings listings={listings} lang={lang} t={t} loading={listingsLoading} onDelete={deleteListing} />
+        <MyListings listings={mergedListings} lang={lang} t={t} loading={listingsLoading} onDelete={deleteListing} />
       )}
       {tab === 'offers' && (
-        <OffersTab supabase={supabase} user={user} lang={lang} t={t} onUpdate={fetchListings} />
+        <OffersTab supabase={supabase} user={user} lang={lang} t={t} mesh={mesh} onUpdate={fetchListings} />
       )}
       {tab === 'tracking' && (
-        <TrackingTab supabase={supabase} user={user} lang={lang} t={t} />
+        <TrackingTab supabase={supabase} user={user} lang={lang} t={t} mesh={mesh} />
       )}
     </AppShell>
   );

@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Activity, ShieldAlert, Cpu, CheckCircle, XCircle, TrendingUp, Shield, Zap, Upload } from 'lucide-react';
 
-const API_URL = 'http://localhost:8080/api';
-const WS_URL = 'ws://localhost:8080/ws';
+const API_URL = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}/api`;
+const WS_URL = `${(import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080').replace(/^http/, 'ws')}/ws`;
 
 function NetworkConsole() {
   const [metrics, setMetrics] = useState(null);

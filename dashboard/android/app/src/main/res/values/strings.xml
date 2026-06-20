@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">GRAM Protocol</string>
+    <string name="title_activity_main">GRAM Protocol</string>
+    <string name="package_name">com.gramprotocol.app</string>
+    <string name="custom_url_scheme">com.gramprotocol.app</string>
+</resources>
