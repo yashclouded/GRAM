@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -54,14 +55,20 @@ func (c *Client) CallChatCompletion(req ChatCompletionRequest) (string, error) {
 	httpReq.Header.Set("Authorization", "Bearer "+c.APIKey)
 	httpReq.Header.Set("Content-Type", "application/json")
 
+	log.Printf("Sending AI request to %s (body size: %d bytes)", c.BaseURL, len(bodyBytes))
+	start := time.Now()
 	resp, err := c.HTTPClient.Do(httpReq)
 	if err != nil {
+		log.Printf("AI request failed after %v: %v", time.Since(start), err)
 		return "", err
 	}
 	defer resp.Body.Close()
 
+	log.Printf("AI request completed in %v with status %d", time.Since(start), resp.StatusCode)
+
 	if resp.StatusCode != http.StatusOK {
 		bodyErr, _ := io.ReadAll(resp.Body)
+		log.Printf("AI error body: %s", string(bodyErr))
 		return "", fmt.Errorf("API error %d: %s", resp.StatusCode, string(bodyErr))
 	}
 
