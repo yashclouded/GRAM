@@ -7,7 +7,7 @@ import { LogOut, Settings, Activity, ShieldCheck } from 'lucide-react';
 import ChatWidget from './ChatWidget';
 
 export default function AppShell({ icon: Icon, title, children }) {
-  const { supabase } = useAuth();
+  const { supabase, profile } = useAuth();
   const { lang, setLang } = useLanguage();
   const navigate = useNavigate();
   const [trustScore, setTrustScore] = useState(50.0);

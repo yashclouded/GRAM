@@ -1,151 +1,166 @@
-# GRAM — Direct Agricultural Marketplace (Phase 0 Demo)
+# GRAM: Gossip-Based Resilient Agricultural Mesh
 
-GRAM is a direct agricultural trading platform that connects farmers, buyers, and transporters without middlemen. This repository is the **Phase 0 hackathon demo** — the marketplace website layer. It is *not* the full decentralized protocol (that's a later phase); think of this as the front door of GRAM: a working, mobile-first web app where real people can sign up and complete trades end-to-end.
-
----
+GRAM is a direct agricultural trading platform that connects farmers, buyers, and transporters without middlemen. This repository contains the Phase 0 demonstration of the marketplace web layer, backed by a simulated peer-to-peer (P2P) Go consensus engine. It is a working, mobile-first web application where participants can sign up and complete decentralized trades end-to-end.
 
 ## Problem Statement
 
-Indian agricultural trade is dominated by brokers and commission agents who control price discovery, delay payments, and extract 10–30% margins from both farmers and buyers. Small farmers have no direct access to buyers, no visibility into fair prices, and no way to track their produce after it leaves their hands.
+Indian agricultural trade is dominated by brokers and commission agents who control price discovery, delay payments, and extract significant margins from both farmers and buyers. Small farmers have no direct access to buyers, no visibility into fair prices, and no way to track their produce after it leaves their hands. GRAM removes the broker by providing farmers, buyers, and transporters a shared coordination layer for direct listings, direct orders, and direct tracking.
 
-GRAM removes the broker by giving farmers, buyers, and transporters a shared coordination layer — direct listings, direct orders, direct tracking.
+## System Architecture
 
----
+```mermaid
+graph TD
+    subgraph Frontend Application
+        F[Farmer App]
+        B[Buyer App]
+        T[Transporter App]
+    end
+
+    subgraph API Gateway
+        REST[REST API]
+        WS[WebSocket Stream]
+    end
+
+    subgraph Consensus & Auction Engine
+        M[VCG Matching Engine]
+        S[Snowball Consensus Engine]
+        R[Bayesian Reputation Matrix]
+    end
+
+    subgraph External Oracles
+        AI[Vision AI Grader]
+    end
+
+    F --> REST
+    B --> REST
+    T --> REST
+    
+    REST --> M
+    M --> S
+    S --> R
+    S --> WS
+    WS --> F
+    WS --> B
+    
+    F --> AI
+```
+
+## Core Protocols and Academic Principles
+
+The GRAM protocol is built upon several foundational algorithms from game theory and distributed systems literature.
+
+### 1. Snowball Consensus Algorithm
+The system uses a leaderless, probabilistic consensus mechanism to validate trades without requiring a centralized authority. When a trade is proposed, nodes sample random quorums of peers to determine the network's preference, continuously shifting state until metastability is broken and consensus is reached.
+* **Reference:** Rocket, T., Yin, M., Sekniqi, K., van Renesse, R., & Sirer, E. G. (2019). *Scalable and Probabilistic Leaderless BFT Consensus through Metastability*.
+
+### 2. Vickrey-Clarke-Groves (VCG) Mechanism
+To ensure truthful bidding and efficient market clearing, the auction engine utilizes VCG pricing. It computes the optimal assignment of buyers to farmers and charges individuals the social harm they cause to others, mathematically ensuring that bidding one's true valuation is the dominant strategy.
+* **References:** 
+  - Vickrey, W. (1961). *Counterspeculation, Auctions, and Competitive Sealed Tenders*.
+  - Clarke, E. H. (1971). *Multipart Pricing of Public Goods*.
+  - Groves, T. (1973). *Incentives in Teams*.
+
+### 3. Shapley Value Cost Allocation
+Transport costs are divided among participants using the Shapley value, ensuring a mathematically fair distribution of logistical expenses based on the marginal contribution of each participant to the route's total efficiency.
+* **Reference:** Shapley, L. S. (1953). *A Value for n-person Games*.
+
+### 4. Bayesian Trust Reputation
+Nodes are assigned a trust score based on their historical behavior (e.g., successful deliveries vs. failed trades). The system utilizes a Beta Reputation framework to continuously update these probabilities, applying a polynomial decay formula to penalize dishonest actors and re-weight their priority in the VCG auction.
+* **Reference:** Josang, A., & Ismail, R. (2002). *The Beta Reputation System*.
 
 ## Tech Stack
 
 | Layer | Technology | Why |
 |---|---|---|
-| Frontend | React 18 + Vite | Fast iteration; no SSR needed for demo |
-| Styling | Vanilla CSS (mobile-first) | Maximum control; Capacitor-ready |
-| Auth | Supabase Auth (email/password) | Built-in RLS, no separate auth server |
-| Database | Supabase (PostgreSQL) | Managed Postgres with real-time subscriptions |
-| i18n | Inline bilingual dicts (EN/HI) | Zero-dependency, instant switch, easy to extract to files |
-| Deployment | Vercel-compatible static export | `vite build` → `dist/` → drop on Vercel |
-
-> Note: The build prompt specified Prisma + SQLite, but Supabase was explicitly chosen for this project because the Supabase project was already provisioned and Supabase Auth + RLS eliminates the need for a separate backend service entirely.
-
----
+| Frontend | React 18 + Vite | Fast iteration; no SSR required for the demonstration |
+| Styling | Vanilla CSS | Maximum control; Capacitor-ready for mobile |
+| Auth | Supabase Auth | Built-in Row Level Security, no separate auth server |
+| Database | Supabase (PostgreSQL) | Managed database with real-time subscriptions |
+| AI | Gemini 1.5 API | Provides vision grading and natural language chat |
+| Backend | Go | High concurrency for the Snowball consensus simulation |
 
 ## Features
 
-### 🌾 Farmer
-- **Create Listing**: crop type (10 crops), quantity + unit, quality grade (A/B/C), expected price, location, description
-- **My Listings**: all listings with live status badges (Available / Offer Received / Sold / In Transit / Delivered)
-- **Offers**: incoming buyer orders — Accept or Reject each one
-- **Tracking**: accepted orders with a step-by-step timeline; "Mark Payment Received" button once the buyer confirms delivery
+### Farmer Module
+* **Create Listing**: Crop type, quantity, unit, quality grade, expected price, location, description.
+* **AI Vision Grading**: Upload crop images to receive a deterministic quality grade generated by a Vision AI model.
+* **My Listings**: View all listings with live status tracking.
+* **Offers**: Review incoming buyer orders and accept or reject each proposal.
 
-### 🛒 Buyer
-- **Browse Listings**: real-time list from Supabase; search by crop name, filter by grade and max price
-- **Place Order**: modal with quantity input, validated against available stock
-- **My Orders**: all orders with status badges; "Confirm Delivery" button when transporter marks delivered
+### Buyer Module
+* **Browse Listings**: Real-time listing catalog; search by crop name, filter by grade and maximum price.
+* **Place Order**: Submit quantity inputs validated against available agricultural stock.
+* **My Orders**: View order status and confirm delivery when the transporter arrives.
 
-### 🚚 Transporter
-- **My Vehicle Info**: vehicle type dropdown, capacity, service area — persisted to `transporter_profiles`
-- **Available Jobs**: orders matched between farmer and buyer, not yet assigned to a transporter
-- **My Jobs**: accepted jobs with status buttons: Mark Picked Up → Mark In Transit → Mark Delivered
-- **Job History**: all completed deliveries
+### Transporter Module
+* **Vehicle Profile**: Register vehicle type, capacity, and service area.
+* **Available Jobs**: Access orders successfully matched between farmers and buyers.
+* **Job Execution**: Process accepted jobs through status checkpoints (Picked Up, In Transit, Delivered).
 
-### 🔔 Shared (all roles)
-- **In-app Notifications**: real-time bell with unread count; messages auto-created by Supabase triggers on order status changes — bilingual (EN/HI)
-- **Profile/Settings**: edit name, phone, village, district, state; language selector; logout
-- **Language Toggle**: visible in every screen header; switches all text instantly without a reload
+### Shared Capabilities
+* **In-app Notifications**: Real-time WebSocket event streams based on consensus state changes.
+* **Universal AI Assistant**: A conversational AI embedded directly into the application interface to provide real-time agricultural advice.
+* **Language Integration**: Seamless bilingual support (English/Hindi) allowing instant localized text toggling.
 
----
-
-## Setup & Installation
+## Setup and Installation
 
 ```bash
-# 1. Clone
+# 1. Clone the repository
 git clone https://github.com/your-org/agrinerve.git
+
+# 2. Start the Frontend
 cd agrinerve/dashboard
-
-# 2. Install dependencies
 npm install
-
-# 3. Configure environment (copy and fill in)
-cp .env.example .env
-# Edit .env — see "Environment Variables" section below
-
-# 4. Set up Supabase schema
-# - Go to your Supabase project → SQL Editor
-# - Paste the contents of supabase_schema.sql and run it
-# - This creates: listings, orders, transporter_profiles, notifications tables + RLS + triggers
-
-# 5. Start dev server
 npm run dev
-# → opens at http://localhost:5173
-```
 
----
+# 3. Start the Backend Consensus Engine
+cd ../node
+go mod tidy
+go run ./cmd/server
+```
 
 ## Environment Variables
 
-Create `dashboard/.env` with:
+Create `dashboard/.env` with the following variables:
+* `VITE_SUPABASE_URL`: Your Supabase project URL
+* `VITE_SUPABASE_ANON_KEY`: Public anon key for Row Level Security authentication
 
-```
-VITE_SUPABASE_URL=https://your-project-ref.supabase.co
-VITE_SUPABASE_ANON_KEY=your-anon-key-here
-```
-
-| Variable | Description |
-|---|---|
-| `VITE_SUPABASE_URL` | Your Supabase project URL (found in Project Settings → API) |
-| `VITE_SUPABASE_ANON_KEY` | Public anon key — safe to expose to the browser; RLS enforces data access |
-
----
+Create `node/.env` with the following variables:
+* `HACKCLUB_AI_API_KEY`: Primary key for AI orchestration
+* `GEMINI_API_KEY`: Fallback key for robust AI query routing
 
 ## Folder Structure
 
 ```
 agrinerve/
-├── dashboard/               # Vite + React marketplace app (this README)
-│   ├── src/
-│   │   ├── components/      # Shared UI: AppShell, NotificationBell, StatusBadge, EmptyState
-│   │   ├── contexts/        # AuthContext (Supabase auth + profile), LanguageContext
-│   │   ├── pages/           # One file per screen: Auth, LandingPage, Onboarding,
-│   │   │                    #   FarmerApp, BuyerApp, TransporterApp, ProfilePage
-│   │   ├── index.css        # Global mobile-first styles
-│   │   └── App.jsx          # Route definitions
-│   ├── supabase_schema.sql  # Full DB schema to run in Supabase SQL Editor
-│   └── .env.example         # Environment variable template
+├── dashboard/               # React frontend application
+│   ├── src/                 
+│   │   ├── components/      # Shared User Interface elements
+│   │   ├── contexts/        # Authentication and Localization state
+│   │   ├── pages/           # Application views (Farmer, Buyer, Transporter, Admin)
+│   │   └── index.css        # Global CSS styling
+│   └── supabase_schema.sql  # Database architecture configuration
 │
-├── node/                    # Go backend — GRAM consensus/mesh (separate system)
-├── docs/                    # Design doc, architecture notes
-└── README.md                # This file
+├── node/                    # Go consensus and market engine
+│   ├── cmd/                 # Executable entry points
+│   └── internal/            
+│       ├── ai/              # Vision and Chat language models
+│       ├── auction/         # VCG clearing and Shapley routing
+│       ├── consensus/       # Snowball leaderless voting protocol
+│       └── reputation/      # Bayesian trust mathematics
+│
+└── README.md                # Project documentation
 ```
 
----
+## Known Limitations
 
-## Adding a New Language
-
-1. Open each page file (e.g. `FarmerApp.jsx`) — each has a `const dict = { en: {...}, hi: {...} }` at the top.
-2. Add a new key, e.g. `mr: { ... }` with Marathi translations for every string.
-3. In `LanguageContext.jsx`, update the default state if desired.
-4. In any language toggle button, add a third option: `{lang === 'en' ? '...' : lang === 'hi' ? '...' : 'English'}`.
-5. In `NotificationBell.jsx`, add `message_mr` column support (or reuse `message_hi` as fallback until the Supabase schema is extended).
-
-> When the string count grows, extract dicts to `src/locales/en.json`, `src/locales/hi.json`, etc. and load them via a simple `useTranslation()` hook. The inline dict pattern is intentionally extractable.
-
----
-
-## Known Limitations / What's Mocked
-
-- **No real payments** — "Mark Payment Received" is a status flag only; no payment gateway
-- **No real AgriStack / ONDC / Beckn integration** — listings are stored in Supabase, not on any government API
-- **No Agmarknet live prices** — The Go backend has an oracle adapter (`node/internal/oracle/`) but the marketplace frontend does not call it in this build (removed to eliminate backend dependency for standalone demo)
-- **No real-time push / SMS / IVR** — notifications are in-app only via Supabase realtime
-- **Single role per user** — one user account = one role; no multi-role support in this version
-- **No offline mode** — requires internet connection to Supabase
-- **No admin panel or dispute resolution UI**
-
----
+* **Payment Processing**: Payment confirmation is a status flag only; no fiat payment gateways are currently integrated.
+* **Oracle Integration**: External API polling (e.g., Agmarknet) is stubbed to eliminate external network dependencies during offline demonstrations.
+* **Role Isolation**: Accounts are currently limited to a single role per user.
 
 ## Roadmap
 
-Future phases beyond this marketplace layer:
-- **Phase 1 — Decentralized Mesh**: leaderless Snowball consensus over libp2p, gossip-based listing propagation, no single server required
-- **Phase 2 — Oracle Layer**: live Agmarknet mandi price integration, satellite-based crop verification, AI quality grading (Go backend already has stubs for all three)
-- **Phase 3 — Offline Resilience**: SMS/IVR fallback for feature-phone users, local-first sync when internet is intermittent
-
-This is the front door of GRAM, not the whole building.
+Future development phases:
+* **Phase 1**: Transition simulated nodes to physical libp2p network deployments.
+* **Phase 2**: Activate the live Oracle layer for Agmarknet mandi prices and satellite crop verification.
+* **Phase 3**: Develop an SMS/IVR fallback architecture for regions with low bandwidth access.
