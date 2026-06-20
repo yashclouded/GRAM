@@ -146,7 +146,7 @@ func TestSnowballConsensus_DishonestNodes(t *testing.T) {
 
 	tp := consensus.TradeProposal{
 		ID:             "trade-4",
-		ProposerNodeID: nodes[10].ID, 
+		ProposerNodeID: nodes[10].ID,
 		Crop:           "Corn",
 		Quantity:       50,
 		Price:          30,
