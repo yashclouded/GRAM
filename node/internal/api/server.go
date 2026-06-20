@@ -8,22 +8,19 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
-	"github.com/yashsingh/agrinerve/node/internal/auction"
 	"github.com/yashsingh/agrinerve/node/internal/events"
 	"github.com/yashsingh/agrinerve/node/internal/orchestrator"
 )
 
 type Server struct {
 	Orch   *orchestrator.Orchestrator
-	Market *auction.Market
 	Router chi.Router
 	Hub    *Hub
 }
 
-func NewServer(orch *orchestrator.Orchestrator, market *auction.Market) *Server {
+func NewServer(orch *orchestrator.Orchestrator) *Server {
 	s := &Server{
 		Orch:   orch,
-		Market: market,
 		Hub:    NewHub(),
 	}
 

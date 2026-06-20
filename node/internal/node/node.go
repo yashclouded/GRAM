@@ -4,6 +4,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/yashsingh/agrinerve/node/internal/auction"
 	"github.com/yashsingh/agrinerve/node/internal/consensus"
 	"github.com/yashsingh/agrinerve/node/internal/events"
 	"github.com/yashsingh/agrinerve/node/internal/network"
@@ -26,24 +27,32 @@ const (
 )
 
 type Node struct {
-	ID       string
-	Type     NodeType
-	status   int32 // atomic usage
-	Mailbox  chan network.Message
-	router   *network.Router
-	seenMsgs sync.Map // Duplicate suppression
-	engines  sync.Map // tradeID -> *consensus.SnowballEngine
-	stopCh   chan struct{}
+	ID             string
+	Type           NodeType
+	status         int32 // atomic usage
+	Mailbox        chan network.Message
+	router         *network.Router
+	seenMsgs       sync.Map // Duplicate suppression
+	engines        sync.Map // tradeID -> *consensus.SnowballEngine
+	stopCh         chan struct{}
+	listings       []auction.FarmerListing
+	demands        []auction.BuyerDemand
+	offers         []auction.TransportOffer
+	stateMu        sync.RWMutex
+	proposedTrades sync.Map
 }
 
 func NewNode(id string, nType NodeType, router *network.Router) *Node {
 	n := &Node{
-		ID:      id,
-		Type:    nType,
-		status:  int32(Alive),
-		Mailbox: make(chan network.Message, 100),
-		router:  router,
-		stopCh:  make(chan struct{}),
+		ID:       id,
+		Type:     nType,
+		status:   int32(Alive),
+		Mailbox:  make(chan network.Message, 100),
+		router:   router,
+		stopCh:   make(chan struct{}),
+		listings: make([]auction.FarmerListing, 0),
+		demands:  make([]auction.BuyerDemand, 0),
+		offers:   make([]auction.TransportOffer, 0),
 	}
 	router.Register(n)
 	events.Emit(events.NodeSpawned, n.ID)
@@ -137,6 +146,55 @@ func (n *Node) handleMessage(msg network.Message) {
 		engine := consensus.NewSnowballEngine(n, tp, consensus.DefaultParams)
 		if _, loaded := n.engines.LoadOrStore(tp.ID, engine); !loaded {
 			go engine.Run()
+		}
+	} else if msg.Type == network.MsgListing {
+		if l, ok := msg.Payload.(auction.FarmerListing); ok {
+			n.stateMu.Lock()
+			n.listings = append(n.listings, l)
+			n.stateMu.Unlock()
+			n.runLocalMatcher()
+		}
+	} else if msg.Type == network.MsgDemand {
+		if d, ok := msg.Payload.(auction.BuyerDemand); ok {
+			n.stateMu.Lock()
+			n.demands = append(n.demands, d)
+			n.stateMu.Unlock()
+			n.runLocalMatcher()
+		}
+	} else if msg.Type == network.MsgOffer {
+		if o, ok := msg.Payload.(auction.TransportOffer); ok {
+			n.stateMu.Lock()
+			n.offers = append(n.offers, o)
+			n.stateMu.Unlock()
+			n.runLocalMatcher()
+		}
+	}
+}
+
+func (n *Node) runLocalMatcher() {
+	n.stateMu.RLock()
+	listingsCopy := make([]auction.FarmerListing, len(n.listings))
+	copy(listingsCopy, n.listings)
+	demandsCopy := make([]auction.BuyerDemand, len(n.demands))
+	copy(demandsCopy, n.demands)
+	offersCopy := make([]auction.TransportOffer, len(n.offers))
+	copy(offersCopy, n.offers)
+	n.stateMu.RUnlock()
+
+	// Pure matching algorithm on local view
+	trades := auction.GenerateMatches(listingsCopy, demandsCopy, offersCopy, nil)
+
+	for _, t := range trades {
+		if _, proposed := n.proposedTrades.LoadOrStore(t.TradeID, true); !proposed {
+			tp := consensus.TradeProposal{
+				ID:             t.TradeID,
+				ProposerNodeID: n.ID,
+				Crop:           t.Crop,
+				Quantity:       t.Quantity,
+				Price:          t.AgreedPrice,
+			}
+			events.Emit(events.MatchGenerated, t)
+			n.ProposeTrade(tp)
 		}
 	}
 }

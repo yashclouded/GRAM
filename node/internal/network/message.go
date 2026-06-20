@@ -7,6 +7,9 @@ type MsgType string
 const (
 	MsgGossip        MsgType = "Gossip" // generic test message
 	MsgTradeProposal MsgType = "TradeProposal"
+	MsgListing       MsgType = "Listing"
+	MsgDemand        MsgType = "Demand"
+	MsgOffer         MsgType = "Offer"
 )
 
 type Message struct {

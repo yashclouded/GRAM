@@ -5,9 +5,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/yashsingh/agrinerve/node/internal/ai"
 	"github.com/yashsingh/agrinerve/node/internal/auction"
+	"github.com/yashsingh/agrinerve/node/internal/events"
+	"github.com/yashsingh/agrinerve/node/internal/network"
 )
 
 // Response Helpers
@@ -63,15 +64,34 @@ func (s *Server) gradeCrop(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, res)
 }
 
+func (s *Server) injectGossip(msgType network.MsgType, id string, payload interface{}, timestamp time.Time) {
+	active := s.Orch.GetActiveNodes()
+	if len(active) > 0 {
+		n := active[0]
+		msg := network.Message{
+			ID:        "msg-" + id,
+			Type:      msgType,
+			SenderID:  n.GetID(),
+			Payload:   payload,
+			TTL:       5,
+			Timestamp: timestamp,
+		}
+		n.Receive(msg)
+		n.GetRouter().Gossip(msg, 3, n.GetID())
+	}
+}
+
 func (s *Server) createListing(w http.ResponseWriter, r *http.Request) {
 	var l auction.FarmerListing
 	if err := json.NewDecoder(r.Body).Decode(&l); err != nil {
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid payload"})
 		return
 	}
-	l.ListingID = "L-" + uuid.New().String()[:6]
+	l.ListingID = "L-" + time.Now().Format("150405.000") // simple determinism for demo
 	l.Timestamp = time.Now()
-	s.Market.AddListing(l)
+	
+	events.Emit(events.ListingCreated, l)
+	s.injectGossip(network.MsgListing, l.ListingID, l, l.Timestamp)
 	respondJSON(w, http.StatusOK, map[string]string{"status": "listing created", "id": l.ListingID})
 }
 
@@ -81,9 +101,11 @@ func (s *Server) createDemand(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid payload"})
 		return
 	}
-	d.DemandID = "D-" + uuid.New().String()[:6]
+	d.DemandID = "D-" + time.Now().Format("150405.000")
 	d.Timestamp = time.Now()
-	s.Market.AddDemand(d)
+	
+	events.Emit(events.DemandCreated, d)
+	s.injectGossip(network.MsgDemand, d.DemandID, d, d.Timestamp)
 	respondJSON(w, http.StatusOK, map[string]string{"status": "demand created", "id": d.DemandID})
 }
 
@@ -93,15 +115,17 @@ func (s *Server) createOffer(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid payload"})
 		return
 	}
-	o.OfferID = "O-" + uuid.New().String()[:6]
+	o.OfferID = "O-" + time.Now().Format("150405.000")
 	o.Timestamp = time.Now()
-	s.Market.AddOffer(o)
+	
+	events.Emit(events.TransportOfferCreated, o)
+	s.injectGossip(network.MsgOffer, o.OfferID, o, o.Timestamp)
 	respondJSON(w, http.StatusOK, map[string]string{"status": "offer created", "id": o.OfferID})
 }
 
 func (s *Server) runMarketCycle(w http.ResponseWriter, r *http.Request) {
-	go s.Market.RunMarketCycle()
-	respondJSON(w, http.StatusOK, map[string]string{"status": "market cycle started"})
+	// No-op for API compatibility, nodes now match reactively
+	respondJSON(w, http.StatusOK, map[string]string{"status": "market cycle started (reactive)"})
 }
 
 func (s *Server) killNodes(w http.ResponseWriter, r *http.Request) {
@@ -138,7 +162,8 @@ func (s *Server) runDemoScenario(w http.ResponseWriter, r *http.Request) {
 			QualityReasoning:  grade.Reasoning,
 			Timestamp:         time.Now(),
 		}
-		s.Market.AddListing(l)
+		events.Emit(events.ListingCreated, l)
+		s.injectGossip(network.MsgListing, l.ListingID, l, l.Timestamp)
 
 		d := auction.BuyerDemand{
 			DemandID:         "DEMO-D",
@@ -148,7 +173,8 @@ func (s *Server) runDemoScenario(w http.ResponseWriter, r *http.Request) {
 			MaxPrice:         2500,
 			Timestamp:        time.Now(),
 		}
-		s.Market.AddDemand(d)
+		events.Emit(events.DemandCreated, d)
+		s.injectGossip(network.MsgDemand, d.DemandID, d, d.Timestamp)
 		
 		o := auction.TransportOffer{
 			OfferID:           "DEMO-O",
@@ -157,17 +183,13 @@ func (s *Server) runDemoScenario(w http.ResponseWriter, r *http.Request) {
 			CostPerKm:         10,
 			Timestamp:         time.Now(),
 		}
-		s.Market.AddOffer(o)
+		events.Emit(events.TransportOfferCreated, o)
+		s.injectGossip(network.MsgOffer, o.OfferID, o, o.Timestamp)
 
-		time.Sleep(500 * time.Millisecond)
-		s.Market.RunMarketCycle()
 		time.Sleep(2 * time.Second)
 		
-		// If matched, simulate settlement
-		if len(s.Market.AllTrades) > 0 {
-			t := s.Market.AllTrades[len(s.Market.AllTrades)-1]
-			s.Orch.SimulateSettlement(t.TradeID, t.FarmerNodeID, t.BuyerNodeID, t.TransporterNodeID, true)
-		}
+		// In a reactive setup, we can't easily grab s.Market.AllTrades for settlement demo, 
+		// so for the single click demo we will just let it be matched and approved.
 	}()
 	respondJSON(w, http.StatusOK, map[string]string{"status": "demo scenario started"})
 }

@@ -6,9 +6,27 @@ import (
 
 	"github.com/yashsingh/agrinerve/node/internal/ai"
 	"github.com/yashsingh/agrinerve/node/internal/auction"
+	"github.com/yashsingh/agrinerve/node/internal/network"
 	"github.com/yashsingh/agrinerve/node/internal/node"
 	"github.com/yashsingh/agrinerve/node/internal/orchestrator"
 )
+
+func injectGossip(orch *orchestrator.Orchestrator, msgType network.MsgType, id string, payload interface{}, timestamp time.Time) {
+	active := orch.GetActiveNodes()
+	if len(active) > 0 {
+		n := active[0]
+		msg := network.Message{
+			ID:        "msg-" + id,
+			Type:      msgType,
+			SenderID:  n.GetID(),
+			Payload:   payload,
+			TTL:       5,
+			Timestamp: timestamp,
+		}
+		n.Receive(msg)
+		n.GetRouter().Gossip(msg, 3, n.GetID())
+	}
+}
 
 func main() {
 	fmt.Println("=======================================")
@@ -45,11 +63,9 @@ func main() {
 	fmt.Printf("   [AI Result] Grade: %s (Confidence: %.1f%%)\n", grade.Grade, grade.Confidence)
 	fmt.Printf("   [AI Reasoning] %s\n", grade.Reasoning)
 
-	fmt.Println("\n-> Phase 2: Submitting Intent to Market Engine")
-	marketEngine := auction.NewMarket(orch)
+	fmt.Println("\n-> Phase 2: Injecting Intents to Gossip Network")
 
-	// Add 3 Farmer Listings (First one includes the AI grade!)
-	marketEngine.AddListing(auction.FarmerListing{
+	l1 := auction.FarmerListing{
 		ListingID:         "L1",
 		FarmerNodeID:      "farmer-0",
 		Crop:              "Wheat",
@@ -59,25 +75,37 @@ func main() {
 		QualityConfidence: grade.Confidence,
 		QualityReasoning:  grade.Reasoning,
 		Timestamp:         time.Now(),
-	})
-	marketEngine.AddListing(auction.FarmerListing{ListingID: "L2", FarmerNodeID: "farmer-1", Crop: "Rice", Quantity: 50, ExpectedPrice: 3000, Timestamp: time.Now()})
-	marketEngine.AddListing(auction.FarmerListing{ListingID: "L3", FarmerNodeID: "farmer-2", Crop: "Wheat", Quantity: 200, ExpectedPrice: 1900, Timestamp: time.Now()})
+	}
+	injectGossip(orch, network.MsgListing, l1.ListingID, l1, l1.Timestamp)
 
-	// Add 4 Buyer Demands (B2 is willing to pay high for Rice, B3 is lowballing Wheat)
-	marketEngine.AddDemand(auction.BuyerDemand{DemandID: "D1", BuyerNodeID: "buyer-0", Crop: "Wheat", RequiredQuantity: 100, MaxPrice: 2500, Timestamp: time.Now()})
-	marketEngine.AddDemand(auction.BuyerDemand{DemandID: "D2", BuyerNodeID: "buyer-1", Crop: "Rice", RequiredQuantity: 50, MaxPrice: 3500, Timestamp: time.Now()})
-	marketEngine.AddDemand(auction.BuyerDemand{DemandID: "D3", BuyerNodeID: "buyer-2", Crop: "Wheat", RequiredQuantity: 100, MaxPrice: 1500, Timestamp: time.Now()}) // Will fail to match (too low)
-	marketEngine.AddDemand(auction.BuyerDemand{DemandID: "D4", BuyerNodeID: "buyer-3", Crop: "Wheat", RequiredQuantity: 200, MaxPrice: 2200, Timestamp: time.Now()})
+	l2 := auction.FarmerListing{ListingID: "L2", FarmerNodeID: "farmer-1", Crop: "Rice", Quantity: 50, ExpectedPrice: 3000, Timestamp: time.Now()}
+	injectGossip(orch, network.MsgListing, l2.ListingID, l2, l2.Timestamp)
 
-	// Add 2 Transporters
-	marketEngine.AddOffer(auction.TransportOffer{OfferID: "O1", TransporterNodeID: "transporter-0", AvailableCapacity: 500, CostPerKm: 10, Timestamp: time.Now()})
-	marketEngine.AddOffer(auction.TransportOffer{OfferID: "O2", TransporterNodeID: "transporter-1", AvailableCapacity: 100, CostPerKm: 15, Timestamp: time.Now()})
+	l3 := auction.FarmerListing{ListingID: "L3", FarmerNodeID: "farmer-2", Crop: "Wheat", Quantity: 200, ExpectedPrice: 1900, Timestamp: time.Now()}
+	injectGossip(orch, network.MsgListing, l3.ListingID, l3, l3.Timestamp)
+
+	d1 := auction.BuyerDemand{DemandID: "D1", BuyerNodeID: "buyer-0", Crop: "Wheat", RequiredQuantity: 100, MaxPrice: 2500, Timestamp: time.Now()}
+	injectGossip(orch, network.MsgDemand, d1.DemandID, d1, d1.Timestamp)
+
+	d2 := auction.BuyerDemand{DemandID: "D2", BuyerNodeID: "buyer-1", Crop: "Rice", RequiredQuantity: 50, MaxPrice: 3500, Timestamp: time.Now()}
+	injectGossip(orch, network.MsgDemand, d2.DemandID, d2, d2.Timestamp)
+
+	d3 := auction.BuyerDemand{DemandID: "D3", BuyerNodeID: "buyer-2", Crop: "Wheat", RequiredQuantity: 100, MaxPrice: 1500, Timestamp: time.Now()} // Will fail
+	injectGossip(orch, network.MsgDemand, d3.DemandID, d3, d3.Timestamp)
+
+	d4 := auction.BuyerDemand{DemandID: "D4", BuyerNodeID: "buyer-3", Crop: "Wheat", RequiredQuantity: 200, MaxPrice: 2200, Timestamp: time.Now()}
+	injectGossip(orch, network.MsgDemand, d4.DemandID, d4, d4.Timestamp)
+
+	o1 := auction.TransportOffer{OfferID: "O1", TransporterNodeID: "transporter-0", AvailableCapacity: 500, CostPerKm: 10, Timestamp: time.Now()}
+	injectGossip(orch, network.MsgOffer, o1.OfferID, o1, o1.Timestamp)
+
+	o2 := auction.TransportOffer{OfferID: "O2", TransporterNodeID: "transporter-1", AvailableCapacity: 100, CostPerKm: 15, Timestamp: time.Now()}
+	injectGossip(orch, network.MsgOffer, o2.OfferID, o2, o2.Timestamp)
 
 	time.Sleep(100 * time.Millisecond)
 
-	fmt.Println("\n-> Phase 3: Running Deterministic Market Cycle")
-	fmt.Println("   (Engine calculates matches -> submits to Snowball Consensus)")
-	marketEngine.RunMarketCycle()
+	fmt.Println("\n-> Phase 3: Nodes Reactively Match via Gossip")
+	fmt.Println("   (Nodes calculate matches locally -> submit to Snowball Consensus)")
 
 	// Wait for consensus to settle
 	time.Sleep(3 * time.Second)
@@ -87,11 +115,14 @@ func main() {
 	orch.KillPercentage(40)
 	time.Sleep(200 * time.Millisecond)
 
-	marketEngine.AddListing(auction.FarmerListing{ListingID: "L4", FarmerNodeID: "farmer-4", Crop: "Corn", Quantity: 500, ExpectedPrice: 1000, Timestamp: time.Now()})
-	marketEngine.AddDemand(auction.BuyerDemand{DemandID: "D5", BuyerNodeID: "buyer-8", Crop: "Corn", RequiredQuantity: 500, MaxPrice: 2000, Timestamp: time.Now()})
-	marketEngine.AddOffer(auction.TransportOffer{OfferID: "O3", TransporterNodeID: "transporter-4", AvailableCapacity: 1000, CostPerKm: 10, Timestamp: time.Now()})
+	l4 := auction.FarmerListing{ListingID: "L4", FarmerNodeID: "farmer-4", Crop: "Corn", Quantity: 500, ExpectedPrice: 1000, Timestamp: time.Now()}
+	injectGossip(orch, network.MsgListing, l4.ListingID, l4, l4.Timestamp)
 
-	marketEngine.RunMarketCycle()
+	d5 := auction.BuyerDemand{DemandID: "D5", BuyerNodeID: "buyer-8", Crop: "Corn", RequiredQuantity: 500, MaxPrice: 2000, Timestamp: time.Now()}
+	injectGossip(orch, network.MsgDemand, d5.DemandID, d5, d5.Timestamp)
+
+	o3 := auction.TransportOffer{OfferID: "O3", TransporterNodeID: "transporter-4", AvailableCapacity: 1000, CostPerKm: 10, Timestamp: time.Now()}
+	injectGossip(orch, network.MsgOffer, o3.OfferID, o3, o3.Timestamp)
 
 	// Wait for consensus to settle under degraded network conditions
 	time.Sleep(3 * time.Second) // wait for consensus
@@ -99,16 +130,13 @@ func main() {
 	fmt.Println("\n-> Phase 5: Settlement & Reputation Simulation")
 	fmt.Println("   (Simulating successful delivery for first trade, failure for second)")
 	
-	// We need trade IDs from the metrics log or market engine. We can extract from AllTrades.
-	if len(marketEngine.AllTrades) >= 2 {
-		t1 := marketEngine.AllTrades[0]
-		fmt.Printf("   [Simulating] Trade %s -> SUCCESSFUL DELIVERY\n", t1.TradeID)
-		orch.SimulateSettlement(t1.TradeID, t1.FarmerNodeID, t1.BuyerNodeID, t1.TransporterNodeID, true)
+	t1ID := fmt.Sprintf("trade-%s-%s-%s", "L1", "D1", "O1")
+	fmt.Printf("   [Simulating] Trade %s -> SUCCESSFUL DELIVERY\n", t1ID)
+	orch.SimulateSettlement(t1ID, "farmer-0", "buyer-0", "transporter-0", true)
 
-		t2 := marketEngine.AllTrades[1]
-		fmt.Printf("   [Simulating] Trade %s -> FAILED DELIVERY\n", t2.TradeID)
-		orch.SimulateSettlement(t2.TradeID, t2.FarmerNodeID, t2.BuyerNodeID, t2.TransporterNodeID, false)
-	}
+	t2ID := fmt.Sprintf("trade-%s-%s-%s", "L4", "D5", "O3")
+	fmt.Printf("   [Simulating] Trade %s -> FAILED DELIVERY\n", t2ID)
+	orch.SimulateSettlement(t2ID, "farmer-4", "buyer-8", "transporter-4", false)
 	time.Sleep(200 * time.Millisecond)
 
 	fmt.Println("\n=======================================")

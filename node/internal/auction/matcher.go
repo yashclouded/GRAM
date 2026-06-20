@@ -5,7 +5,6 @@ import (
 	"math"
 	"sort"
 
-	"github.com/google/uuid"
 	"github.com/yashsingh/agrinerve/node/internal/reputation"
 )
 
@@ -19,7 +18,7 @@ type MatchCandidate struct {
 }
 
 // GenerateMatches runs the deterministic O(F * B * T) matching algorithm.
-func GenerateMatches(listings []FarmerListing, demands []BuyerDemand, offers []TransportOffer, repManager *reputation.Manager) []Trade {
+func GenerateMatches(listings []FarmerListing, demands []BuyerDemand, offers []TransportOffer, repMap map[string]*reputation.ReputationProfile) []Trade {
 	var candidates []MatchCandidate
 
 	for _, l := range listings {
@@ -43,13 +42,13 @@ func GenerateMatches(listings []FarmerListing, demands []BuyerDemand, offers []T
 
 				// Fetch Reputation Profiles
 				var fRep, bRep, tRep *reputation.ReputationProfile
-				if repManager != nil {
-					fRep = repManager.GetProfile(l.FarmerNodeID)
-					bRep = repManager.GetProfile(d.BuyerNodeID)
-					tRep = repManager.GetProfile(o.TransporterNodeID)
+				if repMap != nil {
+					fRep = repMap[l.FarmerNodeID]
+					bRep = repMap[d.BuyerNodeID]
+					tRep = repMap[o.TransporterNodeID]
 
 					// Constraint: No Blacklisted Nodes
-					if fRep.IsBlacklisted() || bRep.IsBlacklisted() || tRep.IsBlacklisted() {
+					if (fRep != nil && fRep.IsBlacklisted()) || (bRep != nil && bRep.IsBlacklisted()) || (tRep != nil && tRep.IsBlacklisted()) {
 						continue
 					}
 				}
@@ -103,8 +102,14 @@ func GenerateMatches(listings []FarmerListing, demands []BuyerDemand, offers []T
 	}
 
 	// Sort candidates by score descending
-	sort.Slice(candidates, func(i, j int) bool {
-		return candidates[i].Score > candidates[j].Score
+	sort.SliceStable(candidates, func(i, j int) bool {
+		if candidates[i].Score != candidates[j].Score {
+			return candidates[i].Score > candidates[j].Score
+		}
+		// Deterministic tie-breaker
+		hashI := candidates[i].Listing.ListingID + candidates[i].Demand.DemandID + candidates[i].Offer.OfferID
+		hashJ := candidates[j].Listing.ListingID + candidates[j].Demand.DemandID + candidates[j].Offer.OfferID
+		return hashI > hashJ
 	})
 
 	// Greedily select non-overlapping matches
@@ -128,7 +133,7 @@ func GenerateMatches(listings []FarmerListing, demands []BuyerDemand, offers []T
 
 		// Create Trade
 		trade := Trade{
-			TradeID:           fmt.Sprintf("trade-%s", uuid.New().String()[:8]),
+			TradeID:           fmt.Sprintf("trade-%s-%s-%s", c.Listing.ListingID, c.Demand.DemandID, c.Offer.OfferID),
 			FarmerNodeID:      c.Listing.FarmerNodeID,
 			BuyerNodeID:       c.Demand.BuyerNodeID,
 			TransporterNodeID: c.Offer.TransporterNodeID,
