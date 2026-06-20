@@ -42,8 +42,6 @@ func (m *Manager) ApplyScore(nodeID string, delta int, reason string) {
 		m.profiles[nodeID] = p
 	}
 
-	wasBlacklisted := p.IsBlacklisted()
-
 	p.Score += delta
 	if p.Score > 100 {
 		p.Score = 100
@@ -64,10 +62,6 @@ func (m *Manager) ApplyScore(nodeID string, delta int, reason string) {
 	}
 
 	events.Emit(events.ReputationUpdated, p)
-
-	if !wasBlacklisted && p.IsBlacklisted() {
-		events.Emit(events.NodeBlacklisted, p.NodeID)
-	}
 }
 
 func (m *Manager) GetAverageReputation() float64 {

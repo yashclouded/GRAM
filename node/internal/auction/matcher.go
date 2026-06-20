@@ -46,11 +46,6 @@ func GenerateMatches(listings []FarmerListing, demands []BuyerDemand, offers []T
 					fRep = repMap[l.FarmerNodeID]
 					bRep = repMap[d.BuyerNodeID]
 					tRep = repMap[o.TransporterNodeID]
-
-					// Constraint: No Blacklisted Nodes
-					if (fRep != nil && fRep.IsBlacklisted()) || (bRep != nil && bRep.IsBlacklisted()) || (tRep != nil && tRep.IsBlacklisted()) {
-						continue
-					}
 				}
 
 				// Calculate simple flat transport cost (ignoring distance for hackathon scope)
@@ -80,19 +75,21 @@ func GenerateMatches(listings []FarmerListing, demands []BuyerDemand, offers []T
 				// Margin score: 1 point per 10 currency units of margin
 				marginScore := margin * 0.1
 
-				// Reputation score: Combine average reputation to boost trusted networks
-				repScore := 0.0
+				// Continuous trust weighting instead of hard blacklisting
+				trustMultiplier := 1.0
 				if fRep != nil && bRep != nil && tRep != nil {
-					// Max possible is 100, we'll scale it to add up to 50 bonus points
 					avgRep := (float64(fRep.Score) + float64(bRep.Score) + float64(tRep.Score)) / 3.0
-					repScore = avgRep * 0.5
+					// Smooth polynomial decay: score * (trust/100)^2
+					trustMultiplier = math.Pow(avgRep/100.0, 2)
 				}
+
+				baseScore := quantityScore + marginScore
 
 				candidate := MatchCandidate{
 					Listing:     l,
 					Demand:      d,
 					Offer:       o,
-					Score:       quantityScore + marginScore + repScore,
+					Score:       baseScore * trustMultiplier,
 					Margin:      margin,
 					AgreedPrice: l.ExpectedPrice, // Farmer gets exactly what they asked for
 				}

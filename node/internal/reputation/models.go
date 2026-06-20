@@ -9,7 +9,6 @@ const (
 	PenaltyFailed         = -5
 	PenaltyConsensusAbuse = -10
 	PenaltyDishonest      = -15
-	BlacklistThreshold    = 20
 )
 
 type ReputationProfile struct {
@@ -29,6 +28,3 @@ func NewProfile(nodeID string) *ReputationProfile {
 	}
 }
 
-func (p *ReputationProfile) IsBlacklisted() bool {
-	return p.Score < BlacklistThreshold
-}
