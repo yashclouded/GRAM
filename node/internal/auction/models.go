@@ -58,6 +58,8 @@ type Trade struct {
 	AgreedPrice       float64
 	QualityGrade      string
 	QualityConfidence float64
-	TransportCost     float64
-	Status            TradeStatus
+	TransportCost        float64
+	FarmerTransportShare float64
+	BuyerTransportShare  float64
+	Status               TradeStatus
 }

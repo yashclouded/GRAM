@@ -128,19 +128,34 @@ func GenerateMatches(listings []FarmerListing, demands []BuyerDemand, offers []T
 		usedBuyers[c.Demand.BuyerNodeID] = true
 		usedTransporters[c.Offer.TransporterNodeID] = true
 
+		// Calculate VCG clearing price
+		finalPrice := clearPrice(c, candidates)
+
+		// Calculate exact Shapley cost-sharing for Transport
+		totalTransport := c.Offer.CostPerKm * 10
+		costs := map[int]float64{
+			0: 0.0,            // Empty
+			1: totalTransport, // Farmer standalone (if they shipped alone)
+			2: totalTransport, // Buyer standalone (if they shipped alone)
+			3: totalTransport, // Farmer + Buyer combined joint cost
+		}
+		shares := splitCost(2, costs)
+
 		// Create Trade
 		trade := Trade{
-			TradeID:           fmt.Sprintf("trade-%s-%s-%s", c.Listing.ListingID, c.Demand.DemandID, c.Offer.OfferID),
-			FarmerNodeID:      c.Listing.FarmerNodeID,
-			BuyerNodeID:       c.Demand.BuyerNodeID,
-			TransporterNodeID: c.Offer.TransporterNodeID,
-			Crop:              c.Listing.Crop,
-			Quantity:          c.Demand.RequiredQuantity, // Fulfilling exactly what buyer requested
-			AgreedPrice:       c.AgreedPrice,
-			QualityGrade:      c.Listing.QualityGrade,
-			QualityConfidence: c.Listing.QualityConfidence,
-			TransportCost:     c.Offer.CostPerKm * 10,
-			Status:            StatusMatched,
+			TradeID:              fmt.Sprintf("trade-%s-%s-%s", c.Listing.ListingID, c.Demand.DemandID, c.Offer.OfferID),
+			FarmerNodeID:         c.Listing.FarmerNodeID,
+			BuyerNodeID:          c.Demand.BuyerNodeID,
+			TransporterNodeID:    c.Offer.TransporterNodeID,
+			Crop:                 c.Listing.Crop,
+			Quantity:             c.Demand.RequiredQuantity, // Fulfilling exactly what buyer requested
+			AgreedPrice:          finalPrice,
+			QualityGrade:         c.Listing.QualityGrade,
+			QualityConfidence:    c.Listing.QualityConfidence,
+			TransportCost:        totalTransport,
+			FarmerTransportShare: shares[0],
+			BuyerTransportShare:  shares[1],
+			Status:               StatusMatched,
 		}
 		finalizedTrades = append(finalizedTrades, trade)
 	}
