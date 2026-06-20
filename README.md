@@ -1,83 +1,153 @@
 # GRAM Protocol: Gossip-based Resilient Agricultural Mesh
 
-**GRAM** is a leaderless, decentralized coordination protocol designed for agricultural trade. It enables Farmers, Buyers, and Transporters to negotiate, match, and finalize trades without relying on a central server. 
+GRAM is a leaderless, decentralized coordination protocol designed for agricultural trade. It enables Farmers, Buyers, and Transporters to negotiate, match, and finalize trades without relying on a central server. 
 
 Built as a robust, resilient distributed system, GRAM can tolerate massive network failures (up to 40% of nodes suddenly dropping offline) and gracefully degrade during API failures, guaranteeing that local agriculture markets never completely halt due to central point-of-failure outages.
 
----
+## Use Case & Product Overview
 
-## 🌟 Core Capabilities
+In traditional agricultural markets, farmers depend on centralized mandi systems, isolated transport logistics, and opaque pricing engines. This creates systemic fragility: if a central coordination server fails, or if a local authority goes offline, trade grinds to a halt.
 
-### 1. Decentralized Snowball Consensus
-GRAM does not have a "leader" or "master" node. Instead, it utilizes a custom implementation of **Snowball Consensus** (inspired by Avalanche). Nodes continuously sample a random subset of peers (gossip protocol) to vote on trade proposals. The network rapidly converges on a decision, achieving agreement even when nodes are dishonest or offline.
+**GRAM solves this by decentralizing the market.** 
+- **Farmers** list crops with minimum expected prices and AI-graded quality scores.
+- **Buyers** submit demands with maximum purchasing limits.
+- **Transporters** offer logistics capacity.
 
-### 2. Combinatorial Trade Matching Engine
-GRAM features an integrated matching engine that matches supply, demand, and logistics simultaneously.
-- **Farmers** list crops with expected prices.
-- **Buyers** list demands with maximum acceptable prices.
-- **Transporters** offer logistical capacity.
-The deterministic engine pairs these efficiently in an $O(F \times B \times T)$ combinatorial cycle and immediately submits candidate trades to the network for decentralized approval.
-
-### 3. AI Crop Quality Grading (Hack Club AI)
-Before a crop enters the market, farmers can submit a photo for automated grading.
-- Integrated directly with the **Hack Club AI Proxy** (`openai/gpt-chat-latest` Vision).
-- The AI evaluates visual quality, contamination, discoloration, and visible damage, outputting a strict JSON schema containing a `Grade`, `Confidence`, and `Reasoning`.
-- **Graceful Degradation:** If the API fails or the API key is missing, the node degrades to a grade of `"Unknown"` and the market cycle continues unblocked. 
-
-### 4. Chaos Engine & Simulation Orchestrator
-GRAM includes a purpose-built Chaos Engine to prove its resilience. The Orchestrator spins up local goroutine-based nodes and simulates an active market, while the Chaos Engine actively kills up to 40% of the network mid-consensus to prove that the trades still finalize correctly.
+GRAM's decentralized nodes calculate combinatorial matches and utilize a probabilistic gossip protocol to finalize trades, ensuring the agricultural economy remains active even in degraded internet or infrastructural conditions.
 
 ---
 
-## 🚀 Getting Started
+## Core Architecture & Network Flow
 
-### Prerequisites
-- Go 1.21+
+GRAM separates the deterministic market economics from the probabilistic network consensus.
 
-### Installation & Setup
+```mermaid
+graph TD
+    subgraph GRAM Application Layer
+        M[Market Engine / Auction]
+        
+        L[Farmer Listings] --> M
+        D[Buyer Demands] --> M
+        O[Transport Offers] --> M
+    end
 
-1. **Clone the repository:**
-   ```bash
-   git clone <your-repo-url>
-   cd agrinerve
-   ```
+    subgraph Simulation Control Layer
+        M -.->|Proposes Candidate Trades| Orch[Orchestrator]
+        CE[Chaos Engine] -.-> Orch
+    end
 
-2. **Configure Environment Variables:**
-   Navigate into the `node` directory and set up your Hack Club AI API key.
-   ```bash
-   cd node
-   cp .env.example .env
-   ```
-   Open `.env` and add your key:
-   ```env
-   HACKCLUB_AI_API_KEY="your_api_key_here"
-   ```
-   *(Note: If you skip this step, the demo will still work perfectly, but the AI grading will gracefully degrade to "Unknown".)*
-
-3. **Run the Demonstration:**
-   GRAM includes a full terminal-based demonstration that orchestrates 25 nodes, creates trades, grades images, runs the matching engine, and survives a 40% node chaos event.
-   
-   ```bash
-   go run cmd/demo/main.go
-   ```
-
-### Running Tests
-The network includes rigorous distributed systems testing for consensus convergence under failure states.
-```bash
-cd node
-go test ./... -v
+    subgraph Decentralized Network
+        Orch --> N1[Node 1]
+        Orch --> N2[Node 2]
+        N1 <--> N2
+        N1 <--> N3
+        N2 <--> N3
+    end
 ```
 
 ---
 
-## 🏗️ Architecture
+## 1. Decentralized Snowball Consensus
+
+GRAM does not have a "leader" or "master" node. Instead, it utilizes a custom implementation of **Snowball Consensus** (inspired by Avalanche). Nodes continuously sample a random subset of peers to vote on trade proposals. The network rapidly converges on a decision, achieving agreement even when nodes are dishonest or offline.
+
+```mermaid
+sequenceDiagram
+    participant Proposer
+    participant Network Nodes
+    
+    Proposer->>Network Nodes: Broadcast Trade Proposal
+    loop Every Round (Consensus Loop)
+        Network Nodes->>Network Nodes: Gossip (Query K random peers)
+        Network Nodes-->>Network Nodes: Update Confidence Counters
+    end
+    Note over Network Nodes: Threshold Reached
+    Network Nodes->>Proposer: Finalize Trade (Accepted/Rejected)
+```
+
+---
+
+## 2. Combinatorial Trade Matching Engine
+
+GRAM features an integrated matching engine that resolves supply, demand, and logistics simultaneously. The deterministic engine pairs these efficiently in an $O(F \times B \times T)$ combinatorial cycle and immediately submits candidate trades to the network for decentralized approval.
+
+```mermaid
+flowchart TD
+    Start[Run Market Cycle] --> Generate[Generate All F x B x T Combinations]
+    Generate --> Filter[Filter Invalid Constraints]
+    
+    Filter -- Quantity Mismatch --> Drop[Discard]
+    Filter -- Price Economics Fail --> Drop
+    
+    Filter -- Valid Matches --> Score[Score Remaining Matches]
+    Score --> Sort[Sort by Highest Margin & Quantity Fit]
+    Sort --> Select[Greedy Selection]
+    Select --> Propose[Submit to Snowball Consensus]
+```
+
+---
+
+## 3. AI Crop Quality Grading 
+
+Before a crop enters the market, farmers submit a photo for automated grading using the Hack Club AI Vision proxy. The system evaluates visual quality, contamination, discoloration, and visible damage. 
+
+If the AI fails, the node gracefully degrades to an "Unknown" grade and the market cycle continues unblocked, guaranteeing protocol resilience.
+
+```mermaid
+sequenceDiagram
+    participant Farmer
+    participant Grader as AI Subsystem
+    participant AI as Hack Club AI Vision
+    participant Market
+
+    Farmer->>Grader: Upload Crop Image (Base64)
+    Grader->>AI: Call Vision API (Strict JSON Prompt)
+    
+    alt Successful Grading
+        AI-->>Grader: {"grade":"A", "confidence":95, "reasoning":"Looks great."}
+        Grader-->>Farmer: CropGrade (Attached to Listing)
+    else API Timeout / Missing Key
+        AI--xGrader: Error
+        Grader-->>Farmer: Grade="Unknown" (Graceful Degradation)
+    end
+
+    Farmer->>Market: Publish Listing to Decentralized Market
+```
+
+---
+
+## Trade Lifecycle
+
+The following state diagram illustrates the journey of an agricultural asset from intent to finalized trade.
+
+```mermaid
+stateDiagram-v2
+    [*] --> IntentSubmitted : Farmer, Buyer, Transporter
+    IntentSubmitted --> CandidateMatch : Market Cycle Runs
+    CandidateMatch --> ConsensusPending : Submitted to Network
+    
+    state ConsensusPending {
+        Voting
+        Gossip
+        ConfidenceBuilding
+    }
+
+    ConsensusPending --> TradeAccepted : Network Converges (Yes)
+    ConsensusPending --> TradeRejected : Network Converges (No)
+    TradeAccepted --> [*]
+    TradeRejected --> IntentSubmitted : Re-queue
+```
+
+---
+
+## Project Structure
 
 ```text
 /node
 ├── cmd/
 │   └── demo/main.go           # The main simulation execution
 ├── internal/
-│   ├── ai/                    # Hack Club AI Vision proxy and rigid JSON prompts
+│   ├── ai/                    # AI Vision proxy and rigid JSON prompts
 │   ├── auction/               # Deterministic matching engine and market cycle
 │   ├── consensus/             # Snowball consensus algorithms and trade proposals
 │   ├── events/                # Internal event bus for metrics and tracing
@@ -85,6 +155,3 @@ go test ./... -v
 │   ├── node/                  # Base node definitions for Farmers, Buyers, Transporters
 │   └── orchestrator/          # Chaos engine and network health metric calculation
 ```
-
-## 🛡️ Design Philosophy
-GRAM is built for **resilience above all**. Agricultural markets are time-sensitive; a central server going down shouldn't prevent a farmer from securing transport for expiring goods. By utilizing gossip networks, probabilistic consensus, and decoupled AI services, GRAM ensures the market stays alive even in extreme infrastructure-degraded environments.
