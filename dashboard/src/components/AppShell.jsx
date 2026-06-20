@@ -53,14 +53,7 @@ export default function AppShell({ icon: Icon, title, children }) {
           <h1 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
             {Icon && <Icon size={22} />} {title}
           </h1>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', paddingLeft: '1rem', borderLeft: '1px solid rgba(0,0,0,0.1)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.85rem', color: '#16a34a', fontWeight: '600' }} title="Your Bayesian Reputation Score">
-              <ShieldCheck size={16} /> Trust: {trustScore.toFixed(1)}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.85rem', color: networkHealth > 50 ? '#16a34a' : '#ea580c', fontWeight: '600' }} title="GRAM Protocol Health">
-              <Activity size={16} /> Net: {networkHealth}%
-            </div>
-          </div>
+
         </div>
         <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
           <button
@@ -81,7 +74,11 @@ export default function AppShell({ icon: Icon, title, children }) {
           </button>
           <button
             id="logout-btn"
-            onClick={() => supabase.auth.signOut()}
+            onClick={() => {
+              if (window.confirm(lang === 'hi' ? 'क्या आप वाकई लॉगआउट करना चाहते हैं?' : 'Are you sure you want to logout?')) {
+                supabase.auth.signOut();
+              }
+            }}
             style={{ background: 'none', border: 'none', padding: '0.25rem', cursor: 'pointer' }}
             title={lang === 'hi' ? 'लॉगआउट' : 'Logout'}
           >
@@ -92,6 +89,14 @@ export default function AppShell({ icon: Icon, title, children }) {
       <main className="farmer-content">
         {children}
       </main>
+      <footer className="farmer-stats-footer">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.85rem', color: '#16a34a', fontWeight: '700' }} title="Your Bayesian Reputation Score">
+          <ShieldCheck size={16} /> Trust: {trustScore.toFixed(1)}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.85rem', color: networkHealth > 50 ? '#16a34a' : '#ea580c', fontWeight: '700' }} title="GRAM Protocol Health">
+          <Activity size={16} /> Net: {networkHealth}%
+        </div>
+      </footer>
       <ChatWidget />
     </div>
   );

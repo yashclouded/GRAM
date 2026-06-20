@@ -99,6 +99,7 @@ function OrderModal({ listing, onClose, onPlace, lang, t }) {
     if (!qty || isNaN(qty) || +qty <= 0) { setError(t.errQty); return; }
     if (+qty > listing.quantity) { setError(t.errMaxQty); return; }
     if (!bid || isNaN(bid) || +bid <= 0) { setError('Please enter a valid bid price.'); return; }
+    if (!window.confirm(lang === 'hi' ? 'क्या आप इस ऑर्डर को कन्फर्म करना चाहते हैं?' : 'Are you sure you want to place this order?')) return;
     setLoading(true);
     await onPlace(listing, +qty, +bid);
     setLoading(false);

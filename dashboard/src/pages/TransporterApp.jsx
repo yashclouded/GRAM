@@ -174,6 +174,7 @@ function AvailableJobsTab({ supabase, user, lang, t }) {
   };
 
   const acceptJob = async (job) => {
+    if (!window.confirm(lang === 'hi' ? 'क्या आप इस काम को स्वीकार करना चाहते हैं?' : 'Are you sure you want to accept this job?')) return;
     setAccepting(job.id);
     await supabase.from('orders').update({
       transporter_id: user.id,

@@ -11,6 +11,7 @@ import BuyerApp from './pages/BuyerApp';
 import TransporterApp from './pages/TransporterApp';
 import ProfilePage from './pages/ProfilePage';
 import NetworkConsole from './pages/NetworkConsole';
+import SciencePage from './pages/SciencePage';
 
 function LoadingScreen() {
   return (
@@ -41,6 +42,7 @@ export default function App() {
       <Route path="/" element={user ? <Navigate to={profile?.role ? `/${profile.role}` : '/onboarding'} replace /> : <LandingPage />} />
       <Route path="/auth" element={user ? <Navigate to={profile?.role ? `/${profile.role}` : '/onboarding'} replace /> : <Auth />} />
       <Route path="/admin" element={<NetworkConsole />} />
+      <Route path="/science" element={<SciencePage />} />
 
       {/* Protected routes */}
       <Route element={<ProtectedRoute />}>

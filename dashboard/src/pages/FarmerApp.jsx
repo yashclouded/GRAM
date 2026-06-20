@@ -169,6 +169,7 @@ function CreateListingForm({ supabase, user, lang, t, onSuccess }) {
     e.preventDefault();
     const err = validate();
     if (err) { setError(err); return; }
+    if (!window.confirm(lang === 'hi' ? 'क्या आप इस लिस्टिंग को पोस्ट करना चाहते हैं?' : 'Are you sure you want to post this listing?')) return;
     setLoading(true); setError(''); setSuccess('');
     const { error: dbErr } = await supabase.from('listings').insert({
       farmer_id: user.id,
@@ -267,7 +268,7 @@ function CreateListingForm({ supabase, user, lang, t, onSuccess }) {
   );
 }
 
-function MyListings({ listings, lang, t, loading }) {
+function MyListings({ listings, lang, t, loading, onDelete }) {
   if (loading) return <div style={{ textAlign: 'center', padding: '2rem' }}><Loader2 className="spin" size={28} color="#2e7d32" /></div>;
   if (!listings.length) return <EmptyState icon={List} title={t.noListings} subtitle={t.noListingsSub} />;
 
@@ -282,7 +283,17 @@ function MyListings({ listings, lang, t, loading }) {
                 {l.quantity} {l.unit} · {l.location}
               </p>
             </div>
-            <StatusBadge status={l.status} lang={lang} />
+            <div>
+              <StatusBadge status={l.status} lang={lang} />
+              {l.status === 'listed' && (
+                <button 
+                  onClick={() => onDelete(l.id)}
+                  style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0 0.5rem', marginTop: '0.25rem', fontSize: '0.85rem' }}
+                >
+                  {lang === 'hi' ? 'हटाएं' : 'Delete'}
+                </button>
+              )}
+            </div>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.75rem' }}>
             <span className="grade-badge">{lang === 'en' ? 'Grade' : 'श्रेणी'} {l.grade}</span>
@@ -493,6 +504,12 @@ export default function FarmerApp() {
     setListingsLoading(false);
   };
 
+  const deleteListing = async (id) => {
+    if (!window.confirm(lang === 'hi' ? 'क्या आप वाकई इस लिस्टिंग को हटाना चाहते हैं?' : 'Are you sure you want to delete this listing?')) return;
+    await supabase.from('listings').delete().eq('id', id);
+    fetchListings();
+  };
+
   useEffect(() => { fetchListings(); }, []);
 
   const tabLabels = [t.tabCreate, t.tabListings, t.tabOffers, t.tabTracking];
@@ -521,7 +538,7 @@ export default function FarmerApp() {
         <CreateListingForm supabase={supabase} user={user} lang={lang} t={t} onSuccess={() => { fetchListings(); setTab('listings'); }} />
       )}
       {tab === 'listings' && (
-        <MyListings listings={listings} lang={lang} t={t} loading={listingsLoading} />
+        <MyListings listings={listings} lang={lang} t={t} loading={listingsLoading} onDelete={deleteListing} />
       )}
       {tab === 'offers' && (
         <OffersTab supabase={supabase} user={user} lang={lang} t={t} onUpdate={fetchListings} />

@@ -9,7 +9,7 @@ import { motion, useScroll, useTransform, AnimatePresence } from 'framer-motion'
 
 const dict = {
   en: {
-    nav: { product: 'Product', mission: 'Mission', demo: 'Live Demo' },
+    nav: { product: 'Product', mission: 'Mission', science: 'Science', demo: 'Live Demo' },
     badge: 'Hackathon MVP · Live Demo',
     tagline: 'Agriculture,',
     tagline2: 'Reimagined.',
@@ -56,7 +56,7 @@ const dict = {
     footerNote: 'Phase 0 Hackathon Demo · GRAM Protocol',
   },
   hi: {
-    nav: { product: 'प्रोडक्ट', mission: 'मिशन', demo: 'लाइव डेमो' },
+    nav: { product: 'प्रोडक्ट', mission: 'मिशन', science: 'विज्ञान', demo: 'लाइव डेमो' },
     badge: 'हैकथॉन MVP · लाइव डेमो',
     tagline: 'खेती,',
     tagline2: 'नए सिरे से।',
@@ -160,6 +160,7 @@ export default function LandingPage() {
           <nav className="lp-nav-links">
             <a href="#features">{t.nav.product}</a>
             <a href="#roles">{t.nav.mission}</a>
+            <a href="/science" onClick={(e) => { e.preventDefault(); navigate('/science'); }}>{t.nav.science}</a>
           </nav>
           <div className="lp-nav-right">
             <button className="lp-lang-btn" onClick={() => setLang(lang === 'en' ? 'hi' : 'en')}>
