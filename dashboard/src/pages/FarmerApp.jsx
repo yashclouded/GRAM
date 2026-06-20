@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Leaf, Loader2, PackagePlus, List, Inbox, Navigation } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useMesh } from '../contexts/MeshContext';
@@ -27,6 +27,8 @@ const dict = {
     submit: 'List for Sale',
     submitting: 'Listing...',
     successCreate: 'Listing created successfully!',
+    localSaved: 'Saved on this device. It will sync when the bridge is available.',
+    pendingSync: 'Pending sync',
     // Validations
     errCrop: 'Please select a crop.',
     errQty: 'Enter a valid quantity.',
@@ -75,6 +77,8 @@ const dict = {
     submit: 'बिक्री के लिए सूचीबद्ध करें',
     submitting: 'सूचीबद्ध हो रहा है...',
     successCreate: 'लिस्टिंग सफलतापूर्वक बनाई गई!',
+    localSaved: 'यह इस डिवाइस पर सहेजा गया है। ब्रिज उपलब्ध होने पर यह सिंक हो जाएगा।',
+    pendingSync: 'सिंक लंबित',
     errCrop: 'कृपया एक फसल चुनें।',
     errQty: 'एक वैध मात्रा दर्ज करें।',
     errPrice: 'एक वैध कीमत दर्ज करें।',
@@ -105,6 +109,47 @@ const dict = {
 
 const TRACKING_STEPS = ['accepted', 'transporter_assigned', 'picked_up', 'in_transit', 'delivered', 'payment_confirmed'];
 const STEP_KEYS = ['stepAccepted', 'stepTransporter', 'stepPickedUp', 'stepInTransit', 'stepDelivered', 'stepPayment'];
+
+function mergeFarmerListings(remoteListings, meshListings) {
+  const merged = new Map()
+
+  remoteListings.forEach((listing) => {
+    merged.set(String(listing.id), {
+      ...listing,
+      sync_state: 'synced',
+    })
+  })
+
+  meshListings.forEach((listing) => {
+    const remoteKey = listing.server_id ? String(listing.server_id) : null
+    if (remoteKey && merged.has(remoteKey)) {
+      merged.set(remoteKey, {
+        ...merged.get(remoteKey),
+        sync_state: listing.sync_state || 'synced',
+        local_id: listing.local_id || null,
+      })
+      return
+    }
+
+    const key = String(listing.local_id || listing.id || listing.server_id)
+    merged.set(key, {
+      id: listing.local_id || listing.id || key,
+      crop: listing.crop,
+      quantity: listing.quantity,
+      unit: listing.unit,
+      grade: listing.grade,
+      price_per_unit: listing.price_per_unit,
+      location: listing.location,
+      description: listing.description || null,
+      status: listing.status || 'available',
+      created_at: listing.created_at,
+      sync_state: listing.sync_state || 'pending',
+      local_only: true,
+    })
+  })
+
+  return [...merged.values()].sort((left, right) => (right.created_at || '').localeCompare(left.created_at || ''))
+}
 
 // ─── Sub-components ────────────────────────────────────────────────────────────
 
@@ -172,6 +217,7 @@ function CreateListingForm({ supabase, user, lang, t, mesh, onSuccess }) {
     if (err) { setError(err); return; }
     if (!window.confirm(lang === 'hi' ? 'क्या आप इस लिस्टिंग को पोस्ट करना चाहते हैं?' : 'Are you sure you want to post this listing?')) return;
     setLoading(true); setError(''); setSuccess('');
+    const clientId = crypto.randomUUID();
     const listingInput = {
       farmer_id: user.id,
       crop: form.crop,
@@ -182,25 +228,29 @@ function CreateListingForm({ supabase, user, lang, t, mesh, onSuccess }) {
       location: form.location.trim(),
       description: form.description.trim() || null,
     };
+    await mesh?.recordListingCreated({
+      client_id: clientId,
+      ...listingInput,
+      status: 'available',
+      sync_state: 'pending',
+    });
+
     const { data: createdListing, error: dbErr } = await supabase
       .from('listings')
       .insert(listingInput)
       .select('*')
       .single();
     setLoading(false);
-    if (dbErr) { setError(dbErr.message); return; }
+    if (dbErr) {
+      setSuccess(t.localSaved);
+      setForm({ crop: '', quantity: '', unit: 'Quintal', grade: 'A', price_per_unit: '', location: '', description: '' });
+      setImageFile(null);
+      setAiFeedback(null);
+      setTimeout(() => { setSuccess(''); onSuccess(); }, 1200);
+      return;
+    }
     if (createdListing) {
-      await mesh?.recordListingCreated({
-        id: createdListing.id,
-        crop: createdListing.crop,
-        quantity: createdListing.quantity,
-        unit: createdListing.unit,
-        grade: createdListing.grade,
-        price_per_unit: createdListing.price_per_unit,
-        location: createdListing.location,
-        farmer_id: createdListing.farmer_id,
-        status: createdListing.status || 'available',
-      });
+      await mesh?.recordListingSynced(clientId, createdListing);
     }
     setSuccess(t.successCreate);
     setForm({ crop: '', quantity: '', unit: 'Quintal', grade: 'A', price_per_unit: '', location: '', description: '' });
@@ -304,7 +354,7 @@ function MyListings({ listings, lang, t, loading, onDelete }) {
             </div>
             <div>
               <StatusBadge status={l.status} lang={lang} />
-              {l.status === 'listed' && (
+              {['listed', 'available'].includes(l.status) && (
                 <button 
                   onClick={() => onDelete(l.id)}
                   style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0 0.5rem', marginTop: '0.25rem', fontSize: '0.85rem' }}
@@ -321,6 +371,11 @@ function MyListings({ listings, lang, t, loading, onDelete }) {
           <p style={{ fontSize: '0.75rem', color: '#aaa', marginTop: '0.5rem' }}>
             {new Date(l.created_at).toLocaleDateString(lang === 'hi' ? 'hi-IN' : 'en-IN')}
           </p>
+          {l.sync_state && l.sync_state !== 'synced' && (
+            <p style={{ fontSize: '0.76rem', color: '#d97706', marginTop: '0.35rem', fontWeight: 700 }}>
+              {t.pendingSync}
+            </p>
+          )}
         </div>
       ))}
     </div>
@@ -550,6 +605,7 @@ export default function FarmerApp() {
   const [tab, setTab] = useState('create');
   const [listings, setListings] = useState([]);
   const [listingsLoading, setListingsLoading] = useState(true);
+  const mergedListings = useMemo(() => mergeFarmerListings(listings, mesh?.myListings || []), [listings, mesh?.myListings]);
 
   const fetchListings = async () => {
     setListingsLoading(true);
@@ -564,16 +620,32 @@ export default function FarmerApp() {
 
   const deleteListing = async (id) => {
     if (!window.confirm(lang === 'hi' ? 'क्या आप वाकई इस लिस्टिंग को हटाना चाहते हैं?' : 'Are you sure you want to delete this listing?')) return;
-    const listing = listings.find((item) => item.id === id);
-    await supabase.from('listings').delete().eq('id', id);
-    if (listing) {
+    const listing = mergedListings.find((item) => String(item.id) === String(id));
+    if (listing?.local_only || !listing?.server_id) {
       await mesh?.recordListingClosed({
-        id: listing.id,
+        client_id: listing.local_id || listing.id,
         crop: listing.crop,
         quantity: listing.quantity,
         unit: listing.unit,
         location: listing.location,
         status: 'closed',
+        sync_state: 'pending',
+      });
+      fetchListings();
+      return;
+    }
+
+    await supabase.from('listings').delete().eq('id', listing.server_id || id);
+    if (listing) {
+      await mesh?.recordListingClosed({
+        id: listing.server_id || listing.id,
+        client_id: listing.local_id || null,
+        crop: listing.crop,
+        quantity: listing.quantity,
+        unit: listing.unit,
+        location: listing.location,
+        status: 'closed',
+        sync_state: 'synced',
       });
     }
     fetchListings();
@@ -607,7 +679,7 @@ export default function FarmerApp() {
         <CreateListingForm supabase={supabase} user={user} lang={lang} t={t} mesh={mesh} onSuccess={() => { fetchListings(); setTab('listings'); }} />
       )}
       {tab === 'listings' && (
-        <MyListings listings={listings} lang={lang} t={t} loading={listingsLoading} onDelete={deleteListing} />
+        <MyListings listings={mergedListings} lang={lang} t={t} loading={listingsLoading} onDelete={deleteListing} />
       )}
       {tab === 'offers' && (
         <OffersTab supabase={supabase} user={user} lang={lang} t={t} mesh={mesh} onUpdate={fetchListings} />

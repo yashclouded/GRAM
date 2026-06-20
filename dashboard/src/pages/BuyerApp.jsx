@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Store, Loader2, Search, Package, ShoppingBag, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useMesh } from '../contexts/MeshContext';
@@ -31,6 +31,7 @@ const dict = {
     cancel: 'Cancel',
     confirm: 'Confirm Order',
     orderSuccess: 'Order placed!',
+    orderSavedLocal: 'Order saved on this device. It will sync when the bridge is available.',
     errQty: 'Please enter a valid quantity.',
     errMaxQty: 'Quantity cannot exceed available stock.',
     farmer: 'Farmer',
@@ -69,6 +70,7 @@ const dict = {
     cancel: 'रद्द करें',
     confirm: 'ऑर्डर पुष्टि करें',
     orderSuccess: 'ऑर्डर दिया गया!',
+    orderSavedLocal: 'ऑर्डर इस डिवाइस पर सहेजा गया है। ब्रिज उपलब्ध होने पर यह सिंक हो जाएगा।',
     errQty: 'एक वैध मात्रा दर्ज करें।',
     errMaxQty: 'मात्रा उपलब्ध स्टॉक से अधिक नहीं हो सकती।',
     farmer: 'किसान',
@@ -88,6 +90,88 @@ const dict = {
 
 const TRACKING_STEPS = ['accepted', 'transporter_assigned', 'picked_up', 'in_transit', 'delivered', 'payment_confirmed'];
 const STEP_KEYS = ['stepAccepted', 'stepTransporter', 'stepPickedUp', 'stepInTransit', 'stepDelivered', 'stepPayment'];
+
+function mergeBrowseListings(remoteListings, meshListings) {
+  const merged = new Map()
+
+  remoteListings.forEach((listing) => {
+    merged.set(String(listing.id), {
+      ...listing,
+      sync_state: 'synced',
+    })
+  })
+
+  meshListings.forEach((listing) => {
+    if (listing.server_id && merged.has(String(listing.server_id))) {
+      const existing = merged.get(String(listing.server_id))
+      merged.set(String(listing.server_id), {
+        ...existing,
+        sync_state: listing.sync_state || existing.sync_state || 'synced',
+      })
+      return
+    }
+
+    const key = String(listing.local_id || listing.id || listing.server_id)
+    merged.set(key, {
+      id: listing.local_id || listing.id || key,
+      crop: listing.crop,
+      quantity: listing.quantity,
+      unit: listing.unit,
+      grade: listing.grade,
+      price_per_unit: listing.price_per_unit,
+      location: listing.location,
+      status: listing.status || 'available',
+      sync_state: listing.sync_state || 'pending',
+      local_only: true,
+      created_at: listing.created_at,
+    })
+  })
+
+  return [...merged.values()]
+    .filter((listing) => ['available', 'listed'].includes(listing.status))
+    .sort((left, right) => (right.created_at || '').localeCompare(left.created_at || ''))
+}
+
+function mergeBuyerOrders(remoteOrders, meshOrders) {
+  const merged = new Map()
+
+  remoteOrders.forEach((order) => {
+    merged.set(String(order.id), {
+      ...order,
+      sync_state: 'synced',
+    })
+  })
+
+  meshOrders.forEach((order) => {
+    if (order.server_id && merged.has(String(order.server_id))) {
+      merged.set(String(order.server_id), {
+        ...merged.get(String(order.server_id)),
+        sync_state: order.sync_state || 'synced',
+        status: order.status || merged.get(String(order.server_id)).status,
+      })
+      return
+    }
+
+    const key = String(order.local_id || order.id || order.server_id)
+    merged.set(key, {
+      id: order.local_id || order.id || key,
+      listing_id: order.listing_id || null,
+      quantity: order.quantity,
+      agreed_price: order.agreed_price,
+      status: order.status || 'pending',
+      sync_state: order.sync_state || 'pending',
+      local_only: true,
+      created_at: order.created_at,
+      listings: {
+        crop: order.crop,
+        unit: order.unit || 'Unit',
+        location: order.location,
+      },
+    })
+  })
+
+  return [...merged.values()].sort((left, right) => (right.created_at || '').localeCompare(left.created_at || ''))
+}
 
 // ─── Order Modal ───────────────────────────────────────────────────────────────
 function OrderModal({ listing, onClose, onPlace, lang, t }) {
@@ -154,6 +238,7 @@ function BrowseTab({ supabase, user, lang, t, mesh }) {
   const [maxPrice, setMaxPrice] = useState('');
   const [selectedListing, setSelectedListing] = useState(null);
   const [toast, setToast] = useState('');
+  const mergedListings = useMemo(() => mergeBrowseListings(listings, mesh?.activeListings || []), [listings, mesh?.activeListings]);
 
   useEffect(() => {
     fetchListings();
@@ -175,30 +260,41 @@ function BrowseTab({ supabase, user, lang, t, mesh }) {
   };
 
   const placeOrder = async (listing, qty, bidPrice) => {
-    const { data: order } = await supabase.from('orders').insert({
+    const clientId = crypto.randomUUID();
+    await mesh?.recordDemandCreated({
+      client_id: clientId,
+      listing_id: listing.server_id || listing.id,
+      crop: listing.crop,
+      quantity: qty,
+      unit: listing.unit,
+      bid_price: bidPrice,
+      location: listing.location,
+      buyer_id: user.id,
+      farmer_id: listing.farmer_id || null,
+      status: 'pending',
+      sync_state: 'pending',
+    });
+
+    const { data: order, error } = await supabase.from('orders').insert({
       listing_id: listing.id,
       buyer_id: user.id,
       farmer_id: listing.farmer_id,
       quantity: qty,
       agreed_price: bidPrice,
     }).select('*').single();
+    if (error) {
+      setToast(t.orderSavedLocal);
+      setTimeout(() => setToast(''), 2500);
+      return;
+    }
     if (order) {
-      await mesh?.recordDemandCreated({
-        id: order.id,
-        listing_id: listing.id,
-        crop: listing.crop,
-        quantity: qty,
-        bid_price: bidPrice,
-        location: listing.location,
-        buyer_id: user.id,
-        farmer_id: listing.farmer_id,
-      });
+      await mesh?.recordDemandSynced(clientId, order);
     }
     setToast(t.orderSuccess);
     setTimeout(() => setToast(''), 2500);
   };
 
-  const visible = listings.filter(l => {
+  const visible = mergedListings.filter(l => {
     if (search && !l.crop.toLowerCase().includes(search.toLowerCase())) return false;
     if (gradeFilter && l.grade !== gradeFilter) return false;
     if (maxPrice && l.price_per_unit > +maxPrice) return false;
@@ -288,6 +384,7 @@ function MyOrdersTab({ supabase, user, lang, t, mesh }) {
   const [loading, setLoading] = useState(true);
   const [confirming, setConfirming] = useState(null);
   const [editPrice, setEditPrice] = useState({});
+  const mergedOrders = useMemo(() => mergeBuyerOrders(orders, mesh?.myDemands || []), [mesh?.myDemands, orders]);
 
   useEffect(() => {
     fetchOrders();
@@ -312,7 +409,7 @@ function MyOrdersTab({ supabase, user, lang, t, mesh }) {
   const confirmDelivery = async (orderId) => {
     setConfirming(orderId);
     await supabase.from('orders').update({ status: 'delivered' }).eq('id', orderId);
-    const order = orders.find((item) => item.id === orderId);
+    const order = mergedOrders.find((item) => String(item.id) === String(orderId));
     if (order) {
       await mesh?.recordDeliveryStatusChanged({
         id: order.id,
@@ -329,7 +426,7 @@ function MyOrdersTab({ supabase, user, lang, t, mesh }) {
   const updateBid = async (orderId, newPrice) => {
     if (!newPrice) return;
     await supabase.from('orders').update({ agreed_price: newPrice }).eq('id', orderId);
-    const order = orders.find((item) => item.id === orderId);
+    const order = mergedOrders.find((item) => String(item.id) === String(orderId));
     if (order) {
       await mesh?.publishEvent('offer.updated', {
         id: orderId,
@@ -344,7 +441,7 @@ function MyOrdersTab({ supabase, user, lang, t, mesh }) {
 
   const acceptOffer = async (orderId) => {
     await supabase.from('orders').update({ status: 'accepted' }).eq('id', orderId);
-    const order = orders.find((item) => item.id === orderId);
+    const order = mergedOrders.find((item) => String(item.id) === String(orderId));
     if (order) {
       await mesh?.publishEvent('trade.accepted', {
         id: order.id,
@@ -359,11 +456,11 @@ function MyOrdersTab({ supabase, user, lang, t, mesh }) {
   };
 
   if (loading) return <div style={{ textAlign: 'center', padding: '2rem' }}><Loader2 className="spin" size={28} color="#2e7d32" /></div>;
-  if (!orders.length) return <EmptyState icon={Package} title={t.noOrders} subtitle={t.noOrdersSub} />;
+  if (!mergedOrders.length) return <EmptyState icon={Package} title={t.noOrders} subtitle={t.noOrdersSub} />;
 
   return (
     <div className="listings-grid">
-      {orders.map(o => (
+      {mergedOrders.map(o => (
         <div key={o.id} className="farmer-card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
@@ -377,6 +474,11 @@ function MyOrdersTab({ supabase, user, lang, t, mesh }) {
           <p style={{ fontSize: '0.8rem', color: '#888', marginTop: '0.5rem' }}>
             {t.farmer}: {o.profiles?.name || '—'}
           </p>
+          {o.sync_state && o.sync_state !== 'synced' && (
+            <p style={{ fontSize: '0.78rem', color: '#d97706', marginTop: '0.45rem', fontWeight: 700 }}>
+              {t.orderSavedLocal}
+            </p>
+          )}
 
           {!['pending', 'rejected'].includes(o.status) && (
             <div className="tracking-steps" style={{ marginTop: '1.25rem' }}>
@@ -399,11 +501,13 @@ function MyOrdersTab({ supabase, user, lang, t, mesh }) {
                 defaultValue={o.agreed_price} 
                 onChange={e => setEditPrice({...editPrice, [o.id]: e.target.value})} 
                 style={{ width: '80px', padding: '0.4rem', border: '1px solid #ccc', borderRadius: '4px' }} 
+                disabled={o.local_only}
               />
               <button 
                 onClick={() => updateBid(o.id, editPrice[o.id] || o.agreed_price)} 
                 className="secondary-btn" 
                 style={{ padding: '0.4rem 0.75rem', fontSize: '0.85rem' }}
+                disabled={o.local_only}
               >
                 {t.updateBid}
               </button>
@@ -411,6 +515,7 @@ function MyOrdersTab({ supabase, user, lang, t, mesh }) {
                 onClick={() => acceptOffer(o.id)} 
                 className="sell-btn" 
                 style={{ padding: '0.4rem 0.75rem', fontSize: '0.85rem' }}
+                disabled={o.local_only}
               >
                 {t.acceptOffer}
               </button>
