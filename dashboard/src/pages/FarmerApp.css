@@ -1,0 +1,191 @@
+.farmer-app {
+  background-color: #f4f6f8;
+  color: #1a1a1a;
+  font-family: 'Inter', system-ui, sans-serif;
+  min-height: 100vh;
+  padding-bottom: 2rem;
+}
+
+.farmer-header {
+  background-color: #ffffff;
+  padding: 1rem;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.farmer-header h1 {
+  font-size: 1.25rem;
+  color: #2e7d32;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.lang-toggle {
+  background: #f0f0f0;
+  border: none;
+  border-radius: 20px;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #333;
+  cursor: pointer;
+}
+
+.farmer-content {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.farmer-card {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 1.5rem;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.farmer-card h2 {
+  font-size: 1.1rem;
+  margin: 0;
+  color: #444;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.camera-btn {
+  background: #e8f5e9;
+  border: 2px dashed #81c784;
+  border-radius: 12px;
+  padding: 2rem;
+  text-align: center;
+  color: #2e7d32;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.2s ease;
+}
+
+.camera-btn:hover {
+  background: #c8e6c9;
+}
+
+.camera-btn input {
+  display: none;
+}
+
+.result-box {
+  background: #f8f9fa;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.grade-badge {
+  display: inline-block;
+  background: #2e7d32;
+  color: white;
+  padding: 0.25rem 0.75rem;
+  border-radius: 20px;
+  font-weight: bold;
+  font-size: 1.2rem;
+}
+
+.price-text {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #1a1a1a;
+  margin: 0.5rem 0;
+}
+
+.sell-btn {
+  background: #2e7d32;
+  color: white;
+  border: none;
+  border-radius: 12px;
+  padding: 1.25rem;
+  font-size: 1.1rem;
+  font-weight: bold;
+  width: 100%;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(46, 125, 50, 0.3);
+  transition: transform 0.1s ease;
+}
+
+.sell-btn:active {
+  transform: scale(0.98);
+}
+
+.sell-btn:disabled {
+  background: #a5d6a7;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.status-step {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.status-step:last-child {
+  border-bottom: none;
+}
+
+.status-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #e0e0e0;
+  color: #757575;
+}
+
+.status-icon.active {
+  background: #2e7d32;
+  color: white;
+}
+
+.status-icon.error {
+  background: #d32f2f;
+  color: white;
+}
+
+.status-text {
+  font-weight: 500;
+  color: #444;
+}
+
+.status-text.active {
+  color: #2e7d32;
+  font-weight: 600;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
