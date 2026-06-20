@@ -23,6 +23,7 @@ const dict = {
     roles: { farmer: 'Farmer', buyer: 'Buyer', transporter: 'Transporter' },
     back: 'Back',
     errName: 'Name is required.',
+    localAccount: 'Local secure account',
   },
   hi: {
     title: 'प्रोफ़ाइल और सेटिंग्स',
@@ -40,11 +41,12 @@ const dict = {
     roles: { farmer: 'किसान', buyer: 'खरीदार', transporter: 'ट्रांसपोर्टर' },
     back: 'वापस',
     errName: 'नाम आवश्यक है।',
+    localAccount: 'लोकल सुरक्षित खाता',
   }
 };
 
 export default function ProfilePage() {
-  const { user, profile, updateProfile, supabase } = useAuth();
+  const { user, profile, updateProfile, signOut } = useAuth();
   const mesh = useMesh();
   const { lang, setLang } = useLanguage();
   const navigate = useNavigate();
@@ -97,7 +99,7 @@ export default function ProfilePage() {
       <div className="farmer-card" style={{ maxWidth: '480px' }}>
         {/* Email + Role (non-editable) */}
         <div style={{ marginBottom: '1.25rem', padding: '0.75rem', background: '#f8f9fa', borderRadius: '10px' }}>
-          <p style={{ margin: 0, fontSize: '0.82rem', color: '#888' }}>{user?.email}</p>
+          <p style={{ margin: 0, fontSize: '0.82rem', color: '#888' }}>{user?.email || t.localAccount}</p>
           <p style={{ margin: '0.25rem 0 0', fontSize: '0.85rem', color: '#555', fontWeight: 600 }}>
             {t.role}: {roleLabel}
           </p>
@@ -175,7 +177,7 @@ export default function ProfilePage() {
 
           <button
             id="profile-logout-btn"
-            onClick={() => supabase.auth.signOut()}
+            onClick={() => signOut()}
             style={{ marginTop: '0.5rem', background: '#ffebee', color: '#c62828', border: '1px solid #ffcdd2', borderRadius: '10px', padding: '0.75rem', fontWeight: 600, cursor: 'pointer', width: '100%' }}
           >
             {t.logout}

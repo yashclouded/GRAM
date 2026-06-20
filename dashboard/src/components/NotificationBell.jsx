@@ -5,14 +5,14 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function NotificationBell() {
-  const { supabase, user } = useAuth();
+  const { supabase, user, authMode, supabaseEnabled } = useAuth();
   const { lang } = useLanguage();
   const [notifications, setNotifications] = useState([]);
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || authMode === 'local' || !supabaseEnabled) return;
     fetchNotifications();
 
     // Real-time subscription
@@ -29,7 +29,7 @@ export default function NotificationBell() {
       .subscribe();
 
     return () => supabase.removeChannel(channel);
-  }, [user]);
+  }, [authMode, supabaseEnabled, user]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -54,6 +54,10 @@ export default function NotificationBell() {
   };
 
   const unread = notifications.filter(n => !n.read).length;
+
+  if (authMode === 'local' || !supabaseEnabled) {
+    return null;
+  }
 
   return (
     <div style={{ position: 'relative' }} ref={ref}>

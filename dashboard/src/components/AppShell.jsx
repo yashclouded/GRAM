@@ -8,7 +8,7 @@ import { LogOut, Settings, Activity, ShieldCheck } from 'lucide-react';
 import ChatWidget from './ChatWidget';
 
 export default function AppShell({ icon: Icon, title, children }) {
-  const { supabase, profile } = useAuth();
+  const { profile, signOut } = useAuth();
   const mesh = useMesh();
   const { lang, setLang } = useLanguage();
   const navigate = useNavigate();
@@ -89,7 +89,7 @@ export default function AppShell({ icon: Icon, title, children }) {
             id="logout-btn"
             onClick={() => {
               if (window.confirm(lang === 'hi' ? 'क्या आप वाकई लॉगआउट करना चाहते हैं?' : 'Are you sure you want to logout?')) {
-                supabase.auth.signOut();
+                signOut();
               }
             }}
             style={{ background: 'none', border: 'none', padding: '0.25rem', cursor: 'pointer' }}
