@@ -4,6 +4,37 @@ GRAM is a leaderless, decentralized coordination protocol designed for agricultu
 
 Built as a robust, resilient distributed system, GRAM can tolerate massive network failures (up to 40% of nodes suddenly dropping offline) and gracefully degrade during API failures, guaranteeing that local agriculture markets never completely halt due to central point-of-failure outages.
 
+## 🚀 Running the Project
+
+The application is split into a Go backend and a React/Vite frontend. Both must be running simultaneously.
+
+### 1. Start the Backend API & WebSocket Server
+```bash
+cd node
+# If you haven't yet:
+# go mod tidy
+go run cmd/server/main.go
+```
+*The API will start on `http://localhost:8080`.*
+
+### 2. Start the Frontend Dashboard
+Open a new terminal window:
+```bash
+cd dashboard
+# If you haven't yet:
+# npm install
+npm run dev
+```
+*The dashboard will start on `http://localhost:5173`. Open this URL in your browser.*
+
+### 3. Running the Demo
+Once the dashboard is open:
+- Click **"Run Full Demo Trace"** in the top right to simulate a complete cycle: AI grading -> listing -> matching -> consensus -> settlement.
+- Use the **Market Entry** panel to inject manual listings and demands.
+- Use the **Chaos Controls** to drop offline nodes and watch the network re-converge.
+
+---
+
 ## Use Case & Product Overview
 
 In traditional agricultural markets, farmers depend on centralized mandi systems, isolated transport logistics, and opaque pricing engines. This creates systemic fragility: if a central coordination server fails, or if a local authority goes offline, trade grinds to a halt.
