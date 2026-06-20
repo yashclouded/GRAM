@@ -69,6 +69,11 @@ func (o *Orchestrator) RecoverPercentage(p int) {
 	})
 }
 
+func (o *Orchestrator) RecoverAll() {
+	o.RecoverPercentage(100)
+}
+
+
 func (o *Orchestrator) InjectDishonestNodes(count int) {
 	o.mu.RLock()
 	defer o.mu.RUnlock()

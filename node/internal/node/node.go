@@ -26,14 +26,14 @@ const (
 )
 
 type Node struct {
-	ID        string
-	Type      NodeType
-	status    int32 // atomic usage
-	Mailbox   chan network.Message
-	router    *network.Router
-	seenMsgs  sync.Map // Duplicate suppression
-	engines   sync.Map // tradeID -> *consensus.SnowballEngine
-	stopCh    chan struct{}
+	ID       string
+	Type     NodeType
+	status   int32 // atomic usage
+	Mailbox  chan network.Message
+	router   *network.Router
+	seenMsgs sync.Map // Duplicate suppression
+	engines  sync.Map // tradeID -> *consensus.SnowballEngine
+	stopCh   chan struct{}
 }
 
 func NewNode(id string, nType NodeType, router *network.Router) *Node {
@@ -132,7 +132,7 @@ func (n *Node) handleMessage(msg network.Message) {
 		if !ok {
 			return
 		}
-		
+
 		// If we haven't seen this trade before, start a consensus engine
 		engine := consensus.NewSnowballEngine(n, tp, consensus.DefaultParams)
 		if _, loaded := n.engines.LoadOrStore(tp.ID, engine); !loaded {

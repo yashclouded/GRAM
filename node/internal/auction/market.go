@@ -45,7 +45,7 @@ func (m *Market) RunMarketCycle() {
 	start := time.Now()
 
 	// 1. Generate Matches
-	trades := GenerateMatches(m.Listings, m.Demands, m.Offers)
+	trades := GenerateMatches(m.Listings, m.Demands, m.Offers, m.Orch.RepManager)
 
 	// 2. Propose to Consensus
 	for _, t := range trades {
@@ -61,13 +61,22 @@ func (m *Market) RunMarketCycle() {
 		}
 
 		// Inject directly to orchestrator to trigger gossip & Snowball
-		t.Status = StatusConsensusPending
+		t.Status = StatusPending
 		m.AllTrades = append(m.AllTrades, t)
-		
+
 		events.Emit(events.TradeSubmittedToConsensus, tp)
-		
+
 		// Find the actual node object to call ProposeTrade
-		m.Orch.GetNodeByID(t.FarmerNodeID).ProposeTrade(tp)
+		proposerNode := m.Orch.GetNodeByID(t.FarmerNodeID)
+		if proposerNode == nil {
+			active := m.Orch.GetActiveNodes()
+			if len(active) > 0 {
+				proposerNode = active[0] // pick any active node to propose
+			}
+		}
+		if proposerNode != nil {
+			proposerNode.ProposeTrade(tp)
+		}
 	}
 
 	duration := time.Since(start)

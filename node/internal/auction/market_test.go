@@ -3,6 +3,8 @@ package auction
 import (
 	"testing"
 	"time"
+
+	"github.com/yashsingh/agrinerve/node/internal/reputation"
 )
 
 func TestMatcher_ValidMatch(t *testing.T) {
@@ -16,7 +18,7 @@ func TestMatcher_ValidMatch(t *testing.T) {
 		{OfferID: "O1", TransporterNodeID: "T1", AvailableCapacity: 500, CostPerKm: 10, Timestamp: time.Now()},
 	}
 
-	trades := GenerateMatches(listings, demands, offers)
+	trades := GenerateMatches(listings, demands, offers, reputation.NewManager())
 	if len(trades) != 1 {
 		t.Fatalf("Expected 1 trade, got %d", len(trades))
 	}
@@ -46,7 +48,7 @@ func TestMatcher_InvalidPrice(t *testing.T) {
 		{OfferID: "O1", TransporterNodeID: "T1", AvailableCapacity: 500, CostPerKm: 10, Timestamp: time.Now()},
 	}
 
-	trades := GenerateMatches(listings, demands, offers)
+	trades := GenerateMatches(listings, demands, offers, reputation.NewManager())
 	if len(trades) != 0 {
 		t.Fatalf("Expected 0 trades due to price mismatch, got %d", len(trades))
 	}
@@ -63,7 +65,7 @@ func TestMatcher_InvalidCapacity(t *testing.T) {
 		{OfferID: "O1", TransporterNodeID: "T1", AvailableCapacity: 50, CostPerKm: 10, Timestamp: time.Now()},
 	}
 
-	trades := GenerateMatches(listings, demands, offers)
+	trades := GenerateMatches(listings, demands, offers, reputation.NewManager())
 	if len(trades) != 0 {
 		t.Fatalf("Expected 0 trades due to capacity mismatch, got %d", len(trades))
 	}
@@ -82,7 +84,7 @@ func TestMatcher_GreedySelection(t *testing.T) {
 		{OfferID: "O1", TransporterNodeID: "T1", AvailableCapacity: 100, CostPerKm: 10, Timestamp: time.Now()},
 	}
 
-	trades := GenerateMatches(listings, demands, offers)
+	trades := GenerateMatches(listings, demands, offers, reputation.NewManager())
 	if len(trades) != 1 {
 		t.Fatalf("Expected exactly 1 trade because farmer can only be matched once, got %d", len(trades))
 	}

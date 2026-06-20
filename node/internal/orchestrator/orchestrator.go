@@ -8,21 +8,26 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/yashsingh/agrinerve/node/internal/consensus"
+	"github.com/yashsingh/agrinerve/node/internal/events"
 	"github.com/yashsingh/agrinerve/node/internal/network"
 	"github.com/yashsingh/agrinerve/node/internal/node"
+	"github.com/yashsingh/agrinerve/node/internal/reputation"
 )
 
 type Orchestrator struct {
-	mu      sync.RWMutex
-	Router  *network.Router
-	Nodes   []*node.Node
-	Metrics *Metrics
+	mu          sync.RWMutex
+	Router      *network.Router
+	Nodes       []*node.Node
+	Metrics     *Metrics
+	RepManager  *reputation.Manager
+	OnEvent     func(events.Event)
 }
 
 func NewOrchestrator() *Orchestrator {
 	return &Orchestrator{
-		Router: network.NewRouter(),
-		Nodes:  make([]*node.Node, 0),
+		Router:     network.NewRouter(),
+		Nodes:      make([]*node.Node, 0),
+		RepManager: reputation.NewManager(),
 	}
 }
 
@@ -71,6 +76,19 @@ func (o *Orchestrator) GetNodeByID(id string) *node.Node {
 	return nil
 }
 
+func (o *Orchestrator) GetActiveNodes() []*node.Node {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	var active []*node.Node
+	for _, n := range o.Nodes {
+		if n.IsAlive() {
+			active = append(active, n)
+		}
+	}
+	return active
+}
+
+
 func (o *Orchestrator) SubmitTradeProposal(crop string, quantity float64, price float64) string {
 	o.mu.RLock()
 	defer o.mu.RUnlock()
@@ -100,4 +118,33 @@ func (o *Orchestrator) SubmitTradeProposal(crop string, quantity float64, price 
 
 	proposer.ProposeTrade(tp)
 	return tp.ID
+}
+
+// SimulateSettlement mimics the post-trade lifecycle (Transit -> Delivered -> Settled/Failed)
+func (o *Orchestrator) SimulateSettlement(tradeID string, farmerID, buyerID, transporterID string, success bool) {
+	// Emit Transit
+	events.Emit(events.TradeShipped, tradeID)
+
+	// Simulate time passing
+	time.Sleep(100 * time.Millisecond)
+
+	if !success {
+		events.Emit(events.TradeFailed, tradeID)
+		o.RepManager.ApplyScore(farmerID, reputation.PenaltyFailed, "FailedTrade")
+		o.RepManager.ApplyScore(transporterID, reputation.PenaltyFailed, "FailedTrade")
+		return
+	}
+
+	// Emit Delivered
+	events.Emit(events.TradeDelivered, tradeID)
+	o.RepManager.ApplyScore(farmerID, reputation.ScoreDelivered, "TradeDelivered")
+	o.RepManager.ApplyScore(transporterID, reputation.ScoreDelivered, "TradeDelivered")
+
+	time.Sleep(50 * time.Millisecond)
+
+	// Emit Settled
+	events.Emit(events.TradeSettled, tradeID)
+	o.RepManager.ApplyScore(farmerID, reputation.ScoreSettled, "TradeSettled")
+	o.RepManager.ApplyScore(buyerID, reputation.ScoreSettled, "TradeSettled")
+	o.RepManager.ApplyScore(transporterID, reputation.ScoreSettled, "TradeSettled")
 }

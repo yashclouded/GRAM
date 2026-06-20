@@ -6,6 +6,7 @@ import (
 	"sort"
 
 	"github.com/google/uuid"
+	"github.com/yashsingh/agrinerve/node/internal/reputation"
 )
 
 type MatchCandidate struct {
@@ -18,7 +19,7 @@ type MatchCandidate struct {
 }
 
 // GenerateMatches runs the deterministic O(F * B * T) matching algorithm.
-func GenerateMatches(listings []FarmerListing, demands []BuyerDemand, offers []TransportOffer) []Trade {
+func GenerateMatches(listings []FarmerListing, demands []BuyerDemand, offers []TransportOffer, repManager *reputation.Manager) []Trade {
 	var candidates []MatchCandidate
 
 	for _, l := range listings {
@@ -40,6 +41,19 @@ func GenerateMatches(listings []FarmerListing, demands []BuyerDemand, offers []T
 					continue
 				}
 
+				// Fetch Reputation Profiles
+				var fRep, bRep, tRep *reputation.ReputationProfile
+				if repManager != nil {
+					fRep = repManager.GetProfile(l.FarmerNodeID)
+					bRep = repManager.GetProfile(d.BuyerNodeID)
+					tRep = repManager.GetProfile(o.TransporterNodeID)
+
+					// Constraint: No Blacklisted Nodes
+					if fRep.IsBlacklisted() || bRep.IsBlacklisted() || tRep.IsBlacklisted() {
+						continue
+					}
+				}
+
 				// Calculate simple flat transport cost (ignoring distance for hackathon scope)
 				transportCost := o.CostPerKm * 10 // Assume flat 10km for now
 
@@ -53,7 +67,7 @@ func GenerateMatches(listings []FarmerListing, demands []BuyerDemand, offers []T
 				// Calculate Score (0-100)
 				// Margin = how much surplus the buyer has
 				margin := d.MaxPrice - totalCost
-				
+
 				// Exact quantity match gets a bonus
 				quantityScore := 0.0
 				if l.Quantity == d.RequiredQuantity {
@@ -61,17 +75,25 @@ func GenerateMatches(listings []FarmerListing, demands []BuyerDemand, offers []T
 				} else {
 					// Closer quantity matches score higher
 					diff := l.Quantity - d.RequiredQuantity
-					quantityScore = math.Max(0, 50.0 - diff)
+					quantityScore = math.Max(0, 50.0-diff)
 				}
 
 				// Margin score: 1 point per 10 currency units of margin
 				marginScore := margin * 0.1
 
+				// Reputation score: Combine average reputation to boost trusted networks
+				repScore := 0.0
+				if fRep != nil && bRep != nil && tRep != nil {
+					// Max possible is 100, we'll scale it to add up to 50 bonus points
+					avgRep := (float64(fRep.Score) + float64(bRep.Score) + float64(tRep.Score)) / 3.0
+					repScore = avgRep * 0.5
+				}
+
 				candidate := MatchCandidate{
 					Listing:     l,
 					Demand:      d,
 					Offer:       o,
-					Score:       quantityScore + marginScore,
+					Score:       quantityScore + marginScore + repScore,
 					Margin:      margin,
 					AgreedPrice: l.ExpectedPrice, // Farmer gets exactly what they asked for
 				}
@@ -93,9 +115,9 @@ func GenerateMatches(listings []FarmerListing, demands []BuyerDemand, offers []T
 
 	for _, c := range candidates {
 		// In a real system, partial fills would exist. For MVP, we completely lock the entities.
-		if usedFarmers[c.Listing.FarmerNodeID] || 
-		   usedBuyers[c.Demand.BuyerNodeID] || 
-		   usedTransporters[c.Offer.TransporterNodeID] {
+		if usedFarmers[c.Listing.FarmerNodeID] ||
+			usedBuyers[c.Demand.BuyerNodeID] ||
+			usedTransporters[c.Offer.TransporterNodeID] {
 			continue
 		}
 

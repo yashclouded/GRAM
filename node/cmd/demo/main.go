@@ -37,10 +37,10 @@ func main() {
 	fmt.Println("\n-> Phase 1: AI Crop Quality Grading")
 	aiGrader := ai.NewGrader()
 	fmt.Println("-> Farmer uploads crop image for grading...")
-	
+
 	// Tiny 1x1 JPEG base64 for demo purposes
 	sampleImage := "/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA="
-	
+
 	grade := aiGrader.GradeCropImage(sampleImage)
 	fmt.Printf("   [AI Result] Grade: %s (Confidence: %.1f%%)\n", grade.Grade, grade.Confidence)
 	fmt.Printf("   [AI Reasoning] %s\n", grade.Reasoning)
@@ -50,11 +50,11 @@ func main() {
 
 	// Add 3 Farmer Listings (First one includes the AI grade!)
 	marketEngine.AddListing(auction.FarmerListing{
-		ListingID:         "L1", 
-		FarmerNodeID:      "farmer-0", 
-		Crop:              "Wheat", 
-		Quantity:          100, 
-		ExpectedPrice:     2000, 
+		ListingID:         "L1",
+		FarmerNodeID:      "farmer-0",
+		Crop:              "Wheat",
+		Quantity:          100,
+		ExpectedPrice:     2000,
 		QualityGrade:      grade.Grade,
 		QualityConfidence: grade.Confidence,
 		QualityReasoning:  grade.Reasoning,
@@ -74,7 +74,7 @@ func main() {
 	marketEngine.AddOffer(auction.TransportOffer{OfferID: "O2", TransporterNodeID: "transporter-1", AvailableCapacity: 100, CostPerKm: 15, Timestamp: time.Now()})
 
 	time.Sleep(100 * time.Millisecond)
-	
+
 	fmt.Println("\n-> Phase 3: Running Deterministic Market Cycle")
 	fmt.Println("   (Engine calculates matches -> submits to Snowball Consensus)")
 	marketEngine.RunMarketCycle()
@@ -90,11 +90,26 @@ func main() {
 	marketEngine.AddListing(auction.FarmerListing{ListingID: "L4", FarmerNodeID: "farmer-4", Crop: "Corn", Quantity: 500, ExpectedPrice: 1000, Timestamp: time.Now()})
 	marketEngine.AddDemand(auction.BuyerDemand{DemandID: "D5", BuyerNodeID: "buyer-8", Crop: "Corn", RequiredQuantity: 500, MaxPrice: 2000, Timestamp: time.Now()})
 	marketEngine.AddOffer(auction.TransportOffer{OfferID: "O3", TransporterNodeID: "transporter-4", AvailableCapacity: 1000, CostPerKm: 10, Timestamp: time.Now()})
-	
+
 	marketEngine.RunMarketCycle()
 
 	// Wait for consensus to settle under degraded network conditions
 	time.Sleep(3 * time.Second) // wait for consensus
+
+	fmt.Println("\n-> Phase 5: Settlement & Reputation Simulation")
+	fmt.Println("   (Simulating successful delivery for first trade, failure for second)")
+	
+	// We need trade IDs from the metrics log or market engine. We can extract from AllTrades.
+	if len(marketEngine.AllTrades) >= 2 {
+		t1 := marketEngine.AllTrades[0]
+		fmt.Printf("   [Simulating] Trade %s -> SUCCESSFUL DELIVERY\n", t1.TradeID)
+		orch.SimulateSettlement(t1.TradeID, t1.FarmerNodeID, t1.BuyerNodeID, t1.TransporterNodeID, true)
+
+		t2 := marketEngine.AllTrades[1]
+		fmt.Printf("   [Simulating] Trade %s -> FAILED DELIVERY\n", t2.TradeID)
+		orch.SimulateSettlement(t2.TradeID, t2.FarmerNodeID, t2.BuyerNodeID, t2.TransporterNodeID, false)
+	}
+	time.Sleep(200 * time.Millisecond)
 
 	fmt.Println("\n=======================================")
 	fmt.Println("  METRICS SUMMARY")
@@ -108,6 +123,12 @@ func main() {
 	fmt.Printf("Consensus Reached:      %d\n", m.AcceptedTrades)
 	fmt.Printf("Consensus Rejected:     %d\n", m.RejectedTrades)
 	fmt.Printf("Total Consensus Rounds: %d\n", m.TotalConsensusRounds)
+	fmt.Printf("\n--- Settlement Metrics ---\n")
+	fmt.Printf("Successful Deliveries:  %d\n", m.SuccessfulDeliveries)
+	fmt.Printf("Failed Deliveries:      %d\n", m.FailedDeliveries)
+	fmt.Printf("Settlement Rate:        %.1f%%\n", m.SettlementSuccessRate)
+	fmt.Printf("Avg Network Reputation: %.1f\n", orch.RepManager.GetAverageReputation())
+	fmt.Printf("Blacklisted Nodes:      %d\n", m.BlacklistedNodes)
 	m.Mu.RUnlock()
 
 	score := orch.GetHealthScore()

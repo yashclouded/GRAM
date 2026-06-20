@@ -32,6 +32,14 @@ const (
 	CropGraded             EventType = "CropGraded"
 	GradeAttachedToListing EventType = "GradeAttachedToListing"
 	AIGradingFailed        EventType = "AIGradingFailed"
+
+	// Settlement & Reputation Events
+	ReputationUpdated EventType = "ReputationUpdated"
+	TradeShipped      EventType = "TradeShipped"
+	TradeDelivered    EventType = "TradeDelivered"
+	TradeSettled      EventType = "TradeSettled"
+	TradeFailed       EventType = "TradeFailed"
+	NodeBlacklisted   EventType = "NodeBlacklisted"
 )
 
 type Event struct {

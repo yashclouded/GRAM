@@ -24,6 +24,13 @@ type Metrics struct {
 	MatchesGenerated     int
 	MarketCycleDurations []int64
 
+	// Settlement & Reputation
+	SuccessfulDeliveries  int
+	FailedDeliveries      int
+	SettlementSuccessRate float64
+	BlacklistedNodes      int
+	AverageReputation     float64
+
 	ReplayLog []events.Event
 }
 
@@ -31,6 +38,15 @@ func NewMetrics() *Metrics {
 	return &Metrics{
 		ReplayLog: make([]events.Event, 0),
 	}
+}
+
+func (m *Metrics) calculateSettlementRate() {
+	total := m.SuccessfulDeliveries + m.FailedDeliveries
+	if total == 0 {
+		m.SettlementSuccessRate = 0
+		return
+	}
+	m.SettlementSuccessRate = (float64(m.SuccessfulDeliveries) / float64(total)) * 100
 }
 
 func (o *Orchestrator) StartMetricsListener() {
@@ -43,6 +59,10 @@ func (o *Orchestrator) StartMetricsListener() {
 
 			o.processEvent(ev)
 			o.printTrace(ev)
+			
+			if o.OnEvent != nil {
+				o.OnEvent(ev)
+			}
 		}
 	}()
 }
@@ -66,6 +86,16 @@ func (o *Orchestrator) processEvent(ev events.Event) {
 		payload := ev.Payload.(map[string]interface{})
 		dur := payload["durationMs"].(int64)
 		o.Metrics.MarketCycleDurations = append(o.Metrics.MarketCycleDurations, dur)
+	case events.TradeDelivered, events.TradeSettled:
+		if ev.Type == events.TradeDelivered {
+			o.Metrics.SuccessfulDeliveries++
+		}
+		o.Metrics.calculateSettlementRate()
+	case events.TradeFailed:
+		o.Metrics.FailedDeliveries++
+		o.Metrics.calculateSettlementRate()
+	case events.NodeBlacklisted:
+		o.Metrics.BlacklistedNodes++
 	}
 
 	// Dynamic update of node counts
@@ -96,7 +126,7 @@ func (o *Orchestrator) GetHealthScore() int {
 	}
 
 	activeRatio := float64(o.Metrics.ActiveNodes+o.Metrics.DishonestNodes) / float64(o.Metrics.TotalNodes)
-	
+
 	consensusSuccessRate := 1.0
 	totalTrades := o.Metrics.AcceptedTrades + o.Metrics.RejectedTrades
 	if totalTrades > 0 {
