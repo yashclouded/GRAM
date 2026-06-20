@@ -35,6 +35,15 @@ const dict = {
     farmer: 'Farmer',
     transporter: 'Transporter',
     notAssigned: 'Not yet assigned',
+    bidPrice: 'Your Bid Price (₹)',
+    updateBid: 'Update Bid',
+    acceptOffer: 'Accept Offer',
+    stepAccepted: 'Order Accepted',
+    stepTransporter: 'Transporter Assigned',
+    stepPickedUp: 'Picked Up',
+    stepInTransit: 'In Transit',
+    stepDelivered: 'Delivered',
+    stepPayment: 'Payment Confirmed',
   },
   hi: {
     appTitle: 'ग्राम खरीदार',
@@ -64,20 +73,34 @@ const dict = {
     farmer: 'किसान',
     transporter: 'ट्रांसपोर्टर',
     notAssigned: 'अभी नियुक्त नहीं',
+    bidPrice: 'आपकी बोली (₹)',
+    updateBid: 'बोली अपडेट करें',
+    acceptOffer: 'ऑफर स्वीकार करें',
+    stepAccepted: 'ऑर्डर स्वीकृत',
+    stepTransporter: 'ट्रांसपोर्टर नियुक्त',
+    stepPickedUp: 'उठाया गया',
+    stepInTransit: 'रास्ते में',
+    stepDelivered: 'डिलीवर हुआ',
+    stepPayment: 'भुगतान पुष्टि',
   }
 };
+
+const TRACKING_STEPS = ['accepted', 'transporter_assigned', 'picked_up', 'in_transit', 'delivered', 'payment_confirmed'];
+const STEP_KEYS = ['stepAccepted', 'stepTransporter', 'stepPickedUp', 'stepInTransit', 'stepDelivered', 'stepPayment'];
 
 // ─── Order Modal ───────────────────────────────────────────────────────────────
 function OrderModal({ listing, onClose, onPlace, lang, t }) {
   const [qty, setQty] = useState('');
+  const [bid, setBid] = useState(String(listing.price_per_unit));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   const submit = async () => {
     if (!qty || isNaN(qty) || +qty <= 0) { setError(t.errQty); return; }
     if (+qty > listing.quantity) { setError(t.errMaxQty); return; }
+    if (!bid || isNaN(bid) || +bid <= 0) { setError('Please enter a valid bid price.'); return; }
     setLoading(true);
-    await onPlace(listing, +qty);
+    await onPlace(listing, +qty, +bid);
     setLoading(false);
     onClose();
   };
@@ -100,6 +123,13 @@ function OrderModal({ listing, onClose, onPlace, lang, t }) {
             type="number" min="0.1" step="0.1" max={listing.quantity}
             value={qty} onChange={e => { setQty(e.target.value); setError(''); }}
             placeholder={String(listing.quantity)}
+          />
+        </div>
+        <div className="input-group">
+          <label>{t.bidPrice} (Listed at ₹{listing.price_per_unit})</label>
+          <input
+            type="number" min="1"
+            value={bid} onChange={e => { setBid(e.target.value); setError(''); }}
           />
         </div>
         <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem' }}>
@@ -135,20 +165,20 @@ function BrowseTab({ supabase, user, lang, t }) {
     setLoading(true);
     const { data } = await supabase
       .from('listings')
-      .select('*, profiles(name)')
+      .select('*')
       .eq('status', 'available')
       .order('created_at', { ascending: false });
     setListings(data || []);
     setLoading(false);
   };
 
-  const placeOrder = async (listing, qty) => {
+  const placeOrder = async (listing, qty, bidPrice) => {
     await supabase.from('orders').insert({
       listing_id: listing.id,
       buyer_id: user.id,
       farmer_id: listing.farmer_id,
       quantity: qty,
-      agreed_price: listing.price_per_unit,
+      agreed_price: bidPrice,
     });
     setToast(t.orderSuccess);
     setTimeout(() => setToast(''), 2500);
@@ -243,31 +273,43 @@ function MyOrdersTab({ supabase, user, lang, t }) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [confirming, setConfirming] = useState(null);
+  const [editPrice, setEditPrice] = useState({});
 
   useEffect(() => {
     fetchOrders();
     const ch = supabase.channel('buyer-orders')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `buyer_id=eq.${user.id}` },
-        () => fetchOrders())
+        () => fetchOrders(true))
       .subscribe();
     return () => supabase.removeChannel(ch);
   }, []);
 
-  const fetchOrders = async () => {
-    setLoading(true);
+  const fetchOrders = async (silent = false) => {
+    if (!silent) setLoading(true);
     const { data } = await supabase
       .from('orders')
-      .select('*, listings(crop, unit, price_per_unit, location), profiles!orders_farmer_id_fkey(name)')
+      .select('*, listings(crop, unit, price_per_unit, location)')
       .eq('buyer_id', user.id)
       .order('created_at', { ascending: false });
     setOrders(data || []);
-    setLoading(false);
+    if (!silent) setLoading(false);
   };
 
   const confirmDelivery = async (orderId) => {
     setConfirming(orderId);
     await supabase.from('orders').update({ status: 'delivered' }).eq('id', orderId);
     setConfirming(null);
+    fetchOrders();
+  };
+
+  const updateBid = async (orderId, newPrice) => {
+    if (!newPrice) return;
+    await supabase.from('orders').update({ agreed_price: newPrice }).eq('id', orderId);
+    fetchOrders();
+  };
+
+  const acceptOffer = async (orderId) => {
+    await supabase.from('orders').update({ status: 'accepted' }).eq('id', orderId);
     fetchOrders();
   };
 
@@ -290,6 +332,46 @@ function MyOrdersTab({ supabase, user, lang, t }) {
           <p style={{ fontSize: '0.8rem', color: '#888', marginTop: '0.5rem' }}>
             {t.farmer}: {o.profiles?.name || '—'}
           </p>
+
+          {!['pending', 'rejected'].includes(o.status) && (
+            <div className="tracking-steps" style={{ marginTop: '1.25rem' }}>
+              {STEP_KEYS.map((key, i) => {
+                const stepIdx = TRACKING_STEPS.indexOf(o.status);
+                return (
+                  <div key={key} className={`tracking-step ${i <= stepIdx ? 'done' : ''}`}>
+                    <div className="tracking-dot" />
+                    <span>{t[key]}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {o.status === 'pending' && (
+            <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+              <input 
+                type="number" 
+                defaultValue={o.agreed_price} 
+                onChange={e => setEditPrice({...editPrice, [o.id]: e.target.value})} 
+                style={{ width: '80px', padding: '0.4rem', border: '1px solid #ccc', borderRadius: '4px' }} 
+              />
+              <button 
+                onClick={() => updateBid(o.id, editPrice[o.id] || o.agreed_price)} 
+                className="secondary-btn" 
+                style={{ padding: '0.4rem 0.75rem', fontSize: '0.85rem' }}
+              >
+                {t.updateBid}
+              </button>
+              <button 
+                onClick={() => acceptOffer(o.id)} 
+                className="sell-btn" 
+                style={{ padding: '0.4rem 0.75rem', fontSize: '0.85rem' }}
+              >
+                {t.acceptOffer}
+              </button>
+            </div>
+          )}
+
           {o.status === 'in_transit' && (
             <button
               id={`confirm-delivery-${o.id}`}

@@ -41,6 +41,7 @@ const dict = {
     accept: 'Accept',
     reject: 'Reject',
     buyerOrder: 'Buyer Order',
+    counterBid: 'Counter Bid',
     // Tracking
     noTracking: 'No active deliveries.',
     noTrackingSub: 'Accepted orders will appear here for tracking.',
@@ -85,6 +86,7 @@ const dict = {
     accept: 'स्वीकार करें',
     reject: 'अस्वीकार करें',
     buyerOrder: 'खरीदार का ऑर्डर',
+    counterBid: 'जवाबी बोली',
     noTracking: 'कोई सक्रिय डिलीवरी नहीं।',
     noTrackingSub: 'स्वीकृत ऑर्डर ट्रैकिंग के लिए यहाँ दिखेंगे।',
     markPayment: 'भुगतान प्राप्त चिह्नित करें',
@@ -112,8 +114,48 @@ function CreateListingForm({ supabase, user, lang, t, onSuccess }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [imageFile, setImageFile] = useState(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiFeedback, setAiFeedback] = useState(null);
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const handleImageChange = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      setImageFile(e.target.files[0]);
+    }
+  };
+
+  const getAIGrade = async () => {
+    if (!imageFile) return;
+    setAiLoading(true);
+    setAiFeedback(null);
+    try {
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64Data = reader.result.split(',')[1];
+        try {
+          const res = await fetch('http://localhost:8080/api/ai/grade', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image: base64Data })
+          });
+          if (!res.ok) throw new Error('AI Grading failed');
+          const data = await res.json();
+          setForm(f => ({ ...f, grade: data.grade }));
+          setAiFeedback({ success: true, text: `AI: Grade ${data.grade} (${(data.confidence * 100).toFixed(0)}%). ${data.reasoning}` });
+        } catch (err) {
+          console.error(err);
+          setAiFeedback({ success: false, text: lang === 'en' ? 'AI service unavailable.' : 'AI सेवा अनुपलब्ध है।' });
+        } finally {
+          setAiLoading(false);
+        }
+      };
+      reader.readAsDataURL(imageFile);
+    } catch (err) {
+      setAiLoading(false);
+    }
+  };
 
   const validate = () => {
     if (!form.crop) return t.errCrop;
@@ -142,6 +184,8 @@ function CreateListingForm({ supabase, user, lang, t, onSuccess }) {
     if (dbErr) { setError(dbErr.message); return; }
     setSuccess(t.successCreate);
     setForm({ crop: '', quantity: '', unit: 'Quintal', grade: 'A', price_per_unit: '', location: '', description: '' });
+    setImageFile(null);
+    setAiFeedback(null);
     setTimeout(() => { setSuccess(''); onSuccess(); }, 1200);
   };
 
@@ -167,6 +211,23 @@ function CreateListingForm({ supabase, user, lang, t, onSuccess }) {
             {['A', 'B', 'C'].map(g => <option key={g} value={g}>{g}</option>)}
           </select>
         </div>
+      </div>
+
+      <div className="input-group" style={{ marginBottom: '1rem' }}>
+        <label>{lang === 'en' ? 'Crop Image (Optional for AI Grade Check)' : 'फसल छवि (AI ग्रेड जांच के लिए वैकल्पिक)'}</label>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          <input type="file" accept="image/*" capture="environment" onChange={handleImageChange} style={{ flex: 1, padding: '0.4rem', border: '1px solid #ddd', borderRadius: '6px' }} />
+          {imageFile && (
+            <button type="button" onClick={getAIGrade} disabled={aiLoading} className="secondary-btn" style={{ whiteSpace: 'nowrap', padding: '0.5rem 1rem' }}>
+              {aiLoading ? <Loader2 className="spin" size={16} /> : (lang === 'en' ? 'Analyze Quality' : 'गुणवत्ता जांचें')}
+            </button>
+          )}
+        </div>
+        {aiFeedback && (
+          <p style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: aiFeedback.success ? '#2e7d32' : '#d32f2f' }}>
+            {aiFeedback.text}
+          </p>
+        )}
       </div>
 
       <div className="form-row">
@@ -240,18 +301,19 @@ function OffersTab({ supabase, user, lang, t, onUpdate }) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [actioning, setActioning] = useState(null);
+  const [editPrice, setEditPrice] = useState({});
 
   useEffect(() => {
     fetchOrders();
     const ch = supabase.channel('farmer-orders')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `farmer_id=eq.${user.id}` },
-        () => fetchOrders())
+        () => fetchOrders(true))
       .subscribe();
     return () => supabase.removeChannel(ch);
   }, []);
 
-  const fetchOrders = async () => {
-    setLoading(true);
+  const fetchOrders = async (silent = false) => {
+    if (!silent) setLoading(true);
     const { data } = await supabase
       .from('orders')
       .select('*, listings(crop, quantity, unit, price_per_unit, location)')
@@ -259,12 +321,21 @@ function OffersTab({ supabase, user, lang, t, onUpdate }) {
       .eq('status', 'pending')
       .order('created_at', { ascending: false });
     setOrders(data || []);
-    setLoading(false);
+    if (!silent) setLoading(false);
   };
 
   const updateStatus = async (orderId, status) => {
     setActioning(orderId + status);
     await supabase.from('orders').update({ status }).eq('id', orderId);
+    setActioning(null);
+    onUpdate();
+    fetchOrders();
+  };
+
+  const counterBid = async (orderId, newPrice) => {
+    if (!newPrice) return;
+    setActioning(orderId + 'counter');
+    await supabase.from('orders').update({ agreed_price: newPrice }).eq('id', orderId);
     setActioning(null);
     onUpdate();
     fetchOrders();
@@ -284,6 +355,22 @@ function OffersTab({ supabase, user, lang, t, onUpdate }) {
           <p style={{ color: '#555', fontSize: '0.9rem', marginTop: '0.5rem' }}>
             {o.listings?.crop} · {o.quantity} {o.listings?.unit} · ₹{o.agreed_price}
           </p>
+          <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+            <input 
+              type="number" 
+              defaultValue={o.agreed_price} 
+              onChange={e => setEditPrice({...editPrice, [o.id]: e.target.value})} 
+              style={{ width: '80px', padding: '0.4rem', border: '1px solid #ccc', borderRadius: '4px' }} 
+            />
+            <button 
+              disabled={actioning === o.id + 'counter'}
+              onClick={() => counterBid(o.id, editPrice[o.id] || o.agreed_price)} 
+              className="secondary-btn" 
+              style={{ padding: '0.4rem 0.75rem', fontSize: '0.85rem' }}
+            >
+              {actioning === o.id + 'counter' ? <Loader2 className="spin" size={16} /> : t.counterBid}
+            </button>
+          </div>
           <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
             <button
               id={`accept-order-${o.id}`}

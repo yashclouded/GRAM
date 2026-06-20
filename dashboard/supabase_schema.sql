@@ -235,3 +235,4 @@ $$ language plpgsql security definer;
 create trigger listing_status_sync
   after update of status on public.orders
   for each row execute procedure public.update_listing_on_order_accept();
+alter publication supabase_realtime add table listings; alter publication supabase_realtime add table orders; alter publication supabase_realtime add table transporter_profiles;

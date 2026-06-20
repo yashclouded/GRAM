@@ -24,6 +24,7 @@ const dict = {
     errorEmail: "Please enter a valid email.",
     tagline1: "Sell directly to buyers — no middlemen.",
     tagline2: "Fair prices. Real-time tracking.",
+    checkEmail: "Account created! Please check your email to verify your account.",
   },
   hi: {
     welcome: "GRAM में आपका स्वागत है",
@@ -44,6 +45,7 @@ const dict = {
     errorEmail: "कृपया एक वैध ईमेल दर्ज करें।",
     tagline1: "सीधे खरीदारों को बेचें — कोई बिचौलिया नहीं।",
     tagline2: "उचित मूल्य। रियल-टाइम ट्रैकिंग।",
+    checkEmail: "खाता बन गया! कृपया अपना खाता सत्यापित करने के लिए अपना ईमेल जांचें।",
   }
 };
 
@@ -60,6 +62,7 @@ export default function Auth() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
   const validate = () => {
     if (!email || !/\S+@\S+\.\S+/.test(email)) return t.errorEmail;
@@ -78,6 +81,7 @@ export default function Auth() {
 
     setLoading(true);
     setError('');
+    setSuccess('');
     try {
       if (isLogin) {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -99,6 +103,12 @@ export default function Auth() {
             phone: phone.trim()
           });
         }
+        
+        if (!data.session) {
+          setSuccess(t.checkEmail);
+          setLoading(false);
+          return;
+        }
       }
     } catch (err) {
       setError(err.message || t.errorDefault);
@@ -110,6 +120,7 @@ export default function Auth() {
   const switchMode = () => {
     setIsLogin(!isLogin);
     setError('');
+    setSuccess('');
     setName(''); setPhone(''); setEmail(''); setPassword(''); setConfirmPassword('');
   };
 
@@ -148,6 +159,7 @@ export default function Auth() {
             transition={{ duration: 0.25 }}
           >
             {error && <div className="auth-error" role="alert">{error}</div>}
+            {success && <div className="auth-success" role="status" style={{ marginBottom: '1rem' }}>{success}</div>}
 
             {!isLogin && (
               <>
